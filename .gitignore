@@ -1,0 +1,18 @@
+# ✅ Ignore ClinicalTrials.gov raw XML files
+data/ctg-public-xml/*
+!data/ctg-public-xml/.keep
+
+# ✅ Ignore the extracted study index (auto-generated)
+data/indexed_studies.json
+
+# ✅ Ignore local environment and cache files
+.env
+__pycache__/
+*.pyc
+
+# ✅ Logs and system files
+*.log
+.DS_Store
+
+# ❌ REMOVE this line — we want to KEEP startup.py in Git!
+# startup.py
