@@ -12,8 +12,8 @@ def extract_age_from_text(text):
             return None, None
     return None, None
 
-def is_autism_related(text: str) -> bool:
-    keywords = ["autism", "asd", "autistic", "spectrum disorder"]
+def is_mental_health_related(text: str) -> bool:
+    keywords = ["depression", "anxiety", "ptsd", "bipolar", "mental health", "schizophrenia", "mood disorder"]
     tl = text.lower()
     return any(k in tl for k in keywords)
 
@@ -26,7 +26,7 @@ def compute_score_and_group(study, user_loc):
         study.get("eligibility_text", "")
     ])
 
-    if is_autism_related(full_text):
+    if is_mental_health_related(full_text):
         score += 5
 
     coords = study.get("coordinates")
@@ -90,8 +90,8 @@ def match_studies(participant, studies, exclude_river=False):
             continue
 
         rationale = []
-        if is_autism_related(" ".join([s.get("study_title", ""), s.get("eligibility_text", "")])):
-            rationale.append("Autism relevance")
+        if is_mental_health_related(" ".join([s.get("study_title", ""), s.get("eligibility_text", "")])):
+            rationale.append("Mental health relevance")
         rationale.append(f"Age range {min_a}-{max_a}")
         rationale.append(f"Proximity score {score}")
 
