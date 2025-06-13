@@ -51,12 +51,14 @@ def match_studies(participant, studies, exclude_river=False):
         return []
 
     results = []
+    river_candidate = None
 
     for s in studies:
         if s.get("recruitment_status", "").lower() != "recruiting":
             continue
 
-        if exclude_river and "river" in s.get("study_title", "").lower():
+        is_river = "river" in (s.get("study_title", "").lower() + " ".join(s.get("tags", [])))
+        if exclude_river and is_river:
             continue
 
         min_a = s.get("min_age_years")
@@ -68,6 +70,20 @@ def match_studies(participant, studies, exclude_river=False):
 
         if not (min_a <= user_age <= max_a):
             continue
+
+        # Prioritize River match if fully eligible
+        if is_river:
+            state = participant.get("state", "").strip().upper()
+            diagnosis = participant.get("diagnosis_history", "").lower()
+            if (
+                state in ["CA", "MT"] and
+                any(dx in diagnosis for dx in ["depression", "ptsd", "anxiety"]) and
+                participant.get("bipolar", "").lower() != "yes" and
+                participant.get("blood_pressure", "").lower() != "yes" and
+                participant.get("ketamine_use", "").lower() != "yes"
+            ):
+                river_candidate = s
+                continue
 
         score, group = compute_score_and_group(s, user_loc)
         if score <= 0:
@@ -98,6 +114,24 @@ def match_studies(participant, studies, exclude_river=False):
             "match_confidence": score,
             "match_rationale": "; ".join(rationale),
             "group": group
+        })
+
+    # If river matched, prepend it
+    if river_candidate:
+        results.insert(0, {
+            "study_title": river_candidate.get("study_title", "River Study"),
+            "location": river_candidate.get("location", "Unknown"),
+            "study_link": river_candidate.get("study_link"),
+            "summary": river_candidate.get("summary", "No summary."),
+            "eligibility": river_candidate.get("eligibility_text", "Not provided"),
+            "contact": " | ".join(filter(None, [
+                river_candidate.get("contact_name"),
+                river_candidate.get("contact_email"),
+                river_candidate.get("contact_phone")
+            ])),
+            "match_confidence": 10,
+            "match_rationale": "Matched River Program eligibility",
+            "group": "National"
         })
 
     results.sort(key=lambda x: x["match_confidence"], reverse=True)
