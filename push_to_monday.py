@@ -32,7 +32,7 @@ def push_to_monday(participant_data):
         "text_mkrwbndm": participant_data.get("zip", ""),
         "text_mkrw5hsj": participant_data.get("best_time", ""),
         "text_mkrwey0s": participant_data.get("text_opt_in", ""),
-        "text_mkrwk3tk": participant_data.get("age", ""),
+        "text_mkrwk3tk": participant_data.get("dob", ""),
         "text_mkrwc5h6": participant_data.get("gender", ""),
         "text_mkrwfv06": participant_data.get("ethnicity", ""),
         "text_mkrw6ebk": participant_data.get("veteran", ""),

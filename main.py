@@ -29,7 +29,7 @@ SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job i
 - ZIP Code
 - Best Time to Reach You
 - Can we contact you via text message? (Yes / No)
-- Age
+- - Date of birth (e.g., March 14, 1992)
 - Gender Identity
 - Race / Ethnicity
 - Are you a U.S. Veteran? (Yes / No)
