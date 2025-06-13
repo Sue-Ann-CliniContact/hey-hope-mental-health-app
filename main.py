@@ -85,7 +85,7 @@ async def chat_handler(request: Request):
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
             participant_data = river_pending_confirmation.pop(session_id)
-            push_to_monday(participant_data)  # Include match tagging in your push_to_monday
+            push_to_monday(participant_data)
             return {"reply": "✅ Great! You've been submitted to the River Program. You'll be contacted shortly for the next steps."}
         elif user_input.strip().lower() in ["no", "n", "not interested"]:
             participant_data = river_pending_confirmation.pop(session_id)
@@ -114,8 +114,17 @@ async def chat_handler(request: Request):
     if match:
         try:
             participant_data = json.loads(match.group())
-            participant_data["age"] = calculate_age(participant_data.get("dob", ""))
-            participant_data["location"] = f"{participant_data.get('city','')}, {participant_data.get('state','')}"
+
+            dob_value = participant_data.get("dob") or participant_data.get("Date of birth")
+            participant_data["age"] = calculate_age(dob_value or "")
+            participant_data["dob"] = dob_value
+
+            city = participant_data.get("city") or participant_data.get("City", "")
+            state = participant_data.get("state") or participant_data.get("State", "")
+            participant_data["location"] = f"{city}, {state}"
+            participant_data["city"] = city
+            participant_data["state"] = state
+
             print("📥 Extracted participant data:", json.dumps(participant_data, indent=2))
 
             with open("indexed_studies.json", "r") as f:
@@ -123,7 +132,6 @@ async def chat_handler(request: Request):
 
             matches = match_studies(participant_data, all_studies)
 
-            # Check for River match
             for m in matches:
                 if "river" in m.get("study_title", "").lower():
                     river_pending_confirmation[session_id] = participant_data
