@@ -5,11 +5,19 @@ def format_matches_for_gpt(matches):
     lines = ["Here are some clinical studies that may be a fit:\n"]
 
     for match in matches:
-        lines.append(f"**{match.get('study_title', 'Untitled Study')}**")
-        lines.append(f"**Location:** {match.get('location', 'N/A')}")
-        lines.append(f"**Study Link:** [{match.get('study_link', 'View Study')}]({match.get('study_link', '')})")
-
+        title = match.get('study_title') or "Untitled Study"
+        location = match.get('location') or "N/A"
+        link = match.get('study_link') or "#"
+        contact = match.get("contact", "")
         summary = match.get("summary", "")
+        eligibility_text = match.get("eligibility", "").strip()
+        confidence = match.get("match_confidence")
+        rationale = match.get("match_rationale", "")
+
+        lines.append(f"**{title}**")
+        lines.append(f"**Location:** {location}")
+        lines.append(f"**Study Link:** [{link}]({link})")
+
         if summary:
             sentences = summary.strip().split(". ")
             brief_summary = ". ".join(sentences[:2]).strip()
@@ -17,7 +25,6 @@ def format_matches_for_gpt(matches):
                 brief_summary += "."
             lines.append(f"**Summary:** {brief_summary}")
 
-        eligibility_text = match.get("eligibility", "").strip()
         if eligibility_text:
             bullets = []
             for line in eligibility_text.splitlines():
@@ -28,14 +35,13 @@ def format_matches_for_gpt(matches):
                 lines.append("**Eligibility:**")
                 lines.extend(bullets[:5])
 
-        contact = match.get("contact", "")
         if contact and contact.lower() != "none":
             lines.append(f"**Contact:** {contact}")
 
-        confidence = match.get("match_confidence")
-        rationale = match.get("match_rationale", "")
-        lines.append(f"**Match Confidence:** {confidence}/10" if confidence else "")
-        lines.append(f"**Match Rationale:** {rationale}")
+        if confidence is not None:
+            lines.append(f"**Match Confidence:** {confidence}/10")
+        if rationale:
+            lines.append(f"**Match Rationale:** {rationale}")
 
         lines.append("\n")
 

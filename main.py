@@ -20,52 +20,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Trial. Your job is to collect the following info one-by-one in a conversational tone:
-- Name
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to collect the following info one-by-one in a conversational tone:
+- Full Name
 - Email Address
 - Phone Number
-- Date of birth
-- City, State and Zipcode
-- Are you the person with autism, or are you filling this out on their behalf?
-- Can you receive text messages about studies?
-- Has the individual been officially diagnosed with Autism Spectrum Disorder (ASD)?
-- At what age was the diagnosis made?
-- Is the individual verbal or non-verbal?
-- Are they currently taking any medications for ASD or related conditions?
-- What medications are they taking?
-- Do they have any co-occurring conditions? (e.g., ADHD, anxiety, epilepsy)
-- Are there any mobility limitations?
-- Are they currently in school or a program?
-- Are they open to in-person visits or only remote studies?
-- Are you only interested in pediatric/adult studies?
-- Are there any specific goals for participating (e.g., access to therapy, contributing to research)?
+- City
+- State
+- ZIP Code
+- Best Time to Reach You
+- Can we contact you via text message? (Yes / No)
+- Age
+- Gender Identity
+- Race / Ethnicity
+- Are you a U.S. Veteran? (Yes / No)
+- Are you Native American or identify as Indigenous? (Yes / No)
+- Employment Status (Employed, Unemployed, Retired, Student, Other)
+- Annual Income Range
+- Do you have health insurance? (Yes / No / Prefer not to say)
+- Are you currently receiving any form of mental health care? (Yes / No)
+- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other (specify), or None
+- Have you ever tried prescribed treatments such as SSRIs or antidepressants? (Yes / No / Unsure)
+- Have you ever been diagnosed with bipolar disorder? (Yes / No)
+- Do you currently have high blood pressure that is not medically managed? (Yes / No / Unsure)
+- Have you used ketamine recreationally in the past? (Yes / No / Prefer not to say)
+- Are you currently pregnant or breastfeeding? (Yes / No / Prefer not to say)
+- Are you open to remote or at-home participation options? (Yes / No / Maybe)
+- Are you willing to participate in brief screening calls with a study team? (Yes / No / Maybe)
+- Preferred participation format: In-person / Remote / No preference
+- Do you speak a language other than English at home? If yes, what language(s)?
+- Are you open to being contacted about future mental health studies?
+- Anything else you'd like us to know about your mental health journey or study preferences?
 
-Ask one question at a time in a friendly tone. Use previous answers to skip ahead. Once all answers are collected, return only this dictionary:
-
-{
-  "name": ..., 
-  "email": ..., 
-  "phone": ..., 
-  "dob": ..., 
-  "location": ..., 
-  "relation": ..., 
-  "text_opt_in": ..., 
-  "diagnosis": ..., 
-  "diagnosis_age": ..., 
-  "verbal": ..., 
-  "medications": ..., 
-  "medication_names": ..., 
-  "co_conditions": ..., 
-  "mobility": ..., 
-  "school_program": ..., 
-  "visit_type": ..., 
-  "study_age_focus": ..., 
-  "study_goals": ...
-}
-
-Say nothing else in that message. Do not match studies or explain yet."""
+Ask one question at a time in a friendly tone. Use previous answers to skip ahead. Once all answers are collected, return only this dictionary: { ... all answers as key-value pairs ... } Do not summarize or explain."""
 
 chat_histories = {}
+river_pending_confirmation = {}
 
 def calculate_age(dob_str):
     try:
@@ -76,11 +65,36 @@ def calculate_age(dob_str):
         print("⚠️ Error parsing date of birth:", dob_str, "→", str(e))
         return None
 
+def contains_red_flag(text):
+    text = text.lower()
+    red_flags = [
+        "kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"
+    ]
+    return any(flag in text for flag in red_flags)
+
 @app.post("/chat")
 async def chat_handler(request: Request):
     body = await request.json()
     session_id = body.get("session_id", "default")
     user_input = body.get("message")
+
+    if contains_red_flag(user_input):
+        return {"reply": "🚨 It sounds like you’re going through a really difficult time. Please know that you’re not alone. If you’re in immediate danger, call 911. You can also call or text the 988 Suicide & Crisis Lifeline at 988 for free, 24/7 support."}
+
+    # Handle River program confirmation logic
+    if session_id in river_pending_confirmation:
+        if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
+            participant_data = river_pending_confirmation.pop(session_id)
+            push_to_monday(participant_data)  # Include match tagging in your push_to_monday
+            return {"reply": "✅ Great! You've been submitted to the River Program. You'll be contacted shortly for the next steps."}
+        elif user_input.strip().lower() in ["no", "n", "not interested"]:
+            participant_data = river_pending_confirmation.pop(session_id)
+            with open("indexed_studies.json", "r") as f:
+                all_studies = json.load(f)
+            other_matches = match_studies(participant_data, all_studies, exclude_river=True)
+            return {"reply": format_matches_for_gpt(other_matches)}
+        else:
+            return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}
 
     if session_id not in chat_histories:
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -100,21 +114,27 @@ async def chat_handler(request: Request):
     if match:
         try:
             participant_data = json.loads(match.group())
-
             participant_data["age"] = calculate_age(participant_data.get("dob", ""))
+            participant_data["location"] = f"{participant_data.get('city','')}, {participant_data.get('state','')}"
             print("📥 Extracted participant data:", json.dumps(participant_data, indent=2))
-
-            push_to_monday(participant_data)
 
             with open("indexed_studies.json", "r") as f:
                 all_studies = json.load(f)
 
             matches = match_studies(participant_data, all_studies)
+
+            # Check for River match
+            for m in matches:
+                if "river" in m.get("study_title", "").lower():
+                    river_pending_confirmation[session_id] = participant_data
+                    return {"reply": (
+                        "🌊 You've been matched to our **River Program**, which provides affordable at-home ketamine therapy with telehealth support. "
+                        "Sessions are ~$5 each, and the $350 study fee is waived for Veterans and Native American participants.\n\n"
+                        "Would you like to apply now?"
+                    )}
+
+            push_to_monday(participant_data)
             match_summary = format_matches_for_gpt(matches)
-
-            print("✅ MATCHED STUDIES:", matches)
-            print("📤 FEEDING THIS TO GPT FOR FOLLOW-UP:\n", match_summary)
-
             return {"reply": match_summary}
 
         except Exception as e:

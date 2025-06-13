@@ -3,7 +3,7 @@ import requests
 import json
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
-BOARD_ID = 1987448172  # GPT - Autism board
+BOARD_ID = 1987448172  # Hey Hope board
 GROUP_ID = "topics"
 
 def push_to_monday(participant_data):
@@ -20,28 +20,40 @@ def push_to_monday(participant_data):
 
     column_values = {
         "name": participant_data.get("name", ""),
-        "email_mkrjhbqe": {
+        "email_mkrwp3sg": {
             "email": participant_data.get("email", ""),
             "text": participant_data.get("email", "")
         },
-        "phone_mkrj1e0m": {
+        "phone_mkrwnw09": {
             "phone": phone_value
         },
-        "text_mkrk7xqa": participant_data.get("dob", ""),
-        "text_mkrjg9tz": participant_data.get("location", ""),
-        "text_mkrkgtyt": participant_data.get("relation", ""),
-        "text_mkrknr35": participant_data.get("text_opt_in", ""),
-        "text_mkrkh8qw": participant_data.get("diagnosis", ""),
-        "text_mkrkz666": participant_data.get("diagnosis_age", ""),
-        "text_mkrkm84b": participant_data.get("verbal", ""),
-        "text_mkrke8tm": participant_data.get("medications", ""),
-        "text_mkrkzpxn": participant_data.get("medication_names", ""),
-        "text_mkrkrxv3": participant_data.get("co_conditions", ""),
-        "text_mkrk547b": participant_data.get("mobility", ""),
-        "text_mkrkgdjj": participant_data.get("school_program", ""),
-        "text_mkrkb1gp": participant_data.get("visit_type", ""),
-        "text_mkrk5kgn": participant_data.get("study_age_focus", ""),
-        "text_mkrjjyek": participant_data.get("study_goals", "")
+        "text_mkrw88sj": participant_data.get("city", ""),
+        "text_mkrwfpm2": participant_data.get("state", ""),
+        "text_mkrwbndm": participant_data.get("zip", ""),
+        "text_mkrw5hsj": participant_data.get("best_time", ""),
+        "text_mkrwey0s": participant_data.get("text_opt_in", ""),
+        "text_mkrwk3tk": participant_data.get("age", ""),
+        "text_mkrwc5h6": participant_data.get("gender", ""),
+        "text_mkrwfv06": participant_data.get("ethnicity", ""),
+        "text_mkrw6ebk": participant_data.get("veteran", ""),
+        "text_mkrwfp9q": participant_data.get("indigenous", ""),
+        "text_mkrw6jhn": participant_data.get("employment", ""),
+        "text_mkrwp4az": participant_data.get("income", ""),
+        "text_mkrw2622": participant_data.get("insurance", ""),
+        "text_mkrw4sz3": participant_data.get("current_mental_care", ""),
+        "text_mkrw1n9t": participant_data.get("diagnosis_history", ""),
+        "text_mkrw293d": participant_data.get("ssri_use", ""),
+        "text_mkrwgytp": participant_data.get("bipolar", ""),
+        "text_mkrwrdv6": participant_data.get("blood_pressure", ""),
+        "text_mkrwcpt": participant_data.get("ketamine_use", ""),
+        "text_mkrwts3h": participant_data.get("pregnant", ""),
+        "text_mkrw3e9t": participant_data.get("remote_ok", ""),
+        "text_mkrwnrrd": participant_data.get("screening_calls_ok", ""),
+        "text_mkrwb4wx": participant_data.get("preferred_format", ""),
+        "text_mkrw26r3": participant_data.get("non_english_home", ""),
+        "text_mkrw250s": participant_data.get("preferred_language", ""),
+        "text_mkrw27j4": participant_data.get("future_studies_opt_in", ""),
+        "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
@@ -51,7 +63,7 @@ def push_to_monday(participant_data):
       create_item (
         board_id: {BOARD_ID},
         group_id: "{GROUP_ID}",
-        item_name: "{participant_data.get("name", "GPT Lead")}",
+        item_name: "{participant_data.get("name", "Hey Hope Lead")}",
         column_values: "{column_values_str}"
       ) {{
         id

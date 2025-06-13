@@ -44,7 +44,7 @@ def compute_score_and_group(study, user_loc):
 
     return score, group
 
-def match_studies(participant, studies):
+def match_studies(participant, studies, exclude_river=False):
     user_age = participant.get("age")
     user_loc = participant.get("location")
     if user_age is None:
@@ -54,6 +54,9 @@ def match_studies(participant, studies):
 
     for s in studies:
         if s.get("recruitment_status", "").lower() != "recruiting":
+            continue
+
+        if exclude_river and "river" in s.get("study_title", "").lower():
             continue
 
         min_a = s.get("min_age_years")
