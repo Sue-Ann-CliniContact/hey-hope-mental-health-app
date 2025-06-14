@@ -37,7 +37,6 @@ def format_matches_for_gpt(matches):
             )
         return out
 
-    # Combine all buckets into one final string
     return (
         format_group("Near You", buckets["Near You"]) +
         format_group("National", buckets["National"]) +

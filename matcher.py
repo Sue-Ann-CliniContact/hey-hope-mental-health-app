@@ -1,4 +1,5 @@
 import math
+import re
 
 def haversine_distance(coord1, coord2):
     # Calculate distance in kilometers between two coordinate tuples
@@ -13,14 +14,40 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
+# Synonym map for stronger matching
+SYNONYMS = {
+    "depression": ["depression", "major depressive disorder", "mdd"],
+    "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
+    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"],
+    "bipolar": ["bipolar", "bipolar disorder", "manic depression"],
+    "adhd": ["adhd", "attention deficit hyperactivity disorder"],
+    "autism": ["autism", "asd", "autism spectrum disorder"]
+}
+
+def normalize(text):
+    return re.sub(r"[^\w\s]", "", text.lower()).strip()
+
+def expand_terms(diagnosis_text):
+    terms = set()
+    for diag in diagnosis_text.split(","):
+        norm = normalize(diag)
+        for key, values in SYNONYMS.items():
+            if norm in values:
+                terms.update(values)
+                break
+        else:
+            terms.add(norm)
+    return terms
+
 def match_studies(participant, studies, exclude_river=False):
     matches = []
     age = participant.get("age")
     location = participant.get("coordinates")
     diagnosis = (participant.get("diagnosis_history") or "").lower()
+    expanded_terms = expand_terms(diagnosis)
 
     for study in studies:
-        if exclude_river and "river" in study.get("study_title", "").lower():
+        if exclude_river and "river" in (study.get("study_title") or "").lower():
             continue
 
         score = 0
@@ -38,10 +65,12 @@ def match_studies(participant, studies, exclude_river=False):
 
         # Diagnosis/condition relevance (check title + summary)
         summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
-        summary_text = summary_text.lower()
-        if any(term.strip().lower() in summary_text for term in diagnosis.split(", ")):
+        summary_text = normalize(summary_text)
+        if any(term in summary_text for term in expanded_terms):
             score += 2
             reasons.append("Relevant condition match")
+        else:
+            continue  # no condition match, skip
 
         # Location matching
         loc_score = "Unknown"
