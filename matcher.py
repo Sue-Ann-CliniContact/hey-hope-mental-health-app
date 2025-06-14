@@ -2,7 +2,6 @@ import math
 import re
 
 def haversine_distance(coord1, coord2):
-    # Calculate distance in kilometers between two coordinate tuples
     lat1, lon1 = coord1
     lat2, lon2 = coord2
     R = 6371  # Earth radius in km
@@ -10,11 +9,10 @@ def haversine_distance(coord1, coord2):
     phi2 = math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
     delta_lambda = math.radians(lon2 - lon1)
-    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return R * c
 
-# Synonym map for stronger matching
 SYNONYMS = {
     "depression": ["depression", "major depressive disorder", "mdd"],
     "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
@@ -45,42 +43,58 @@ def match_studies(participant, studies, exclude_river=False):
     location = participant.get("coordinates")
     diagnosis = (participant.get("diagnosis_history") or "").lower()
     expanded_terms = expand_terms(diagnosis)
+    ketamine_use = (participant.get("ketamine_use") or "").strip().lower()
+    is_veteran = (participant.get("Are you a U.S. Veteran?") or "").strip().lower() == "yes"
 
     for study in studies:
         if exclude_river and "river" in (study.get("study_title") or "").lower():
             continue
 
-        # 🚫 Gender-based exclusion logic
         participant_gender = (participant.get("gender") or "").lower()
         eligibility_text = (study.get("eligibility_text") or "").lower()
+
+        # Gender exclusion
         if participant_gender == "male":
             if any(term in eligibility_text for term in [
                 "pregnant women", "pregnancy", "currently pregnant", "women aged",
                 "female only", "females only", "breastfeeding women"
             ]):
-                continue  # skip studies not relevant for males
+                continue
+
+        # ❌ Exclude if ketamine use is YES and study bans it
+        if ketamine_use == "yes":
+            if any(term in eligibility_text for term in [
+                "no ketamine", "not used ketamine", "exclude if used ketamine",
+                "must not have used ketamine", "no history of ketamine use"
+            ]):
+                continue
 
         score = 0
         reasons = []
 
-        # Age-based matching (null-safe)
+        # Age-based matching
         age_min = study.get("min_age_years")
         age_max = study.get("max_age_years")
         if age is not None and (age_min is not None or age_max is not None):
             if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
-                continue  # disqualify
+                continue
             else:
                 score += 1
                 reasons.append("Matches your age range")
 
-        # Diagnosis/condition relevance (check title + summary)
-        summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
-        summary_text = normalize(summary_text)
-        if any(term in summary_text for term in expanded_terms):
-            score += 2
-            reasons.append("Relevant condition match")
-        else:
-            continue  # no condition match, skip
+        # Mental health condition relevance
+        combined_text = (
+            (study.get("study_title") or "") + " " +
+            (study.get("summary") or "") + " " +
+            (study.get("eligibility_text") or "")
+        )
+        combined_text = normalize(combined_text)
+
+        if not any(term in combined_text for term in expanded_terms):
+            continue
+
+        score += 2
+        reasons.append("Relevant condition match")
 
         # Location matching
         loc_score = "Unknown"
@@ -96,7 +110,13 @@ def match_studies(participant, studies, exclude_river=False):
         else:
             loc_score = "Other"
 
-        # Contact and location
+        # ✅ Veteran boost
+        if is_veteran and any(vet_term in combined_text for vet_term in [
+            "veteran", "veterans", "military", "former military", "army", "navy", "air force", "marine corps"
+        ]):
+            score += 2
+            reasons.append("Specifically targets veterans")
+
         contact_parts = []
         for key in ["contact_name", "contact_email", "contact_phone"]:
             val = study.get(key)
@@ -107,7 +127,7 @@ def match_studies(participant, studies, exclude_river=False):
         matches.append({
             "study_title": study.get("study_title"),
             "summary": study.get("summary", ""),
-            "conditions": summary_text,
+            "conditions": combined_text,
             "locations": study.get("location", "Not specified"),
             "contacts": contact_info,
             "link": study.get("study_link", ""),
