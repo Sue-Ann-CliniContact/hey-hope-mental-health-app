@@ -145,7 +145,6 @@ async def chat_handler(request: Request):
         try:
             participant_data = json.loads(match.group())
 
-            # Normalize and enrich
             dob_value = next((participant_data.get(k) for k in ["dob", "Date of birth"] if participant_data.get(k)), "")
             participant_data["age"] = calculate_age(dob_value)
             participant_data["dob"] = dob_value
@@ -169,6 +168,13 @@ async def chat_handler(request: Request):
 
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
+
+            # ✅ Check if required data is fully collected
+            required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
+            missing_fields = [k for k in required_fields if not participant_data.get(k)]
+            if missing_fields:
+                print("⏳ Skipping match — missing:", missing_fields)
+                return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
             matches = match_studies(participant_data, all_studies)
 
