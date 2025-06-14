@@ -102,7 +102,7 @@ def push_to_monday(participant_data):
         "board_id": str(BOARD_ID),
         "group_id": GROUP_ID,
         "item_name": item_name,
-        "column_values": column_values
+        "column_values": json.dumps(column_values)  # ✅ Encode column_values as JSON string
     }
 
     print("📤 Monday Payload:", json.dumps(variables, indent=2))  # Debug payload
