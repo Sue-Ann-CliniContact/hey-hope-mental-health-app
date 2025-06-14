@@ -1,52 +1,42 @@
-
 def format_matches_for_gpt(matches):
     if not matches:
-        return "❌ No suitable matches were found at this time."
+        return "❌ Sorry, we couldn't find any matching studies at the moment."
 
-    sections = {
-        "near_you": [],
-        "national": [],
-        "other": []
+    buckets = {
+        "Near You": [],
+        "National": [],
+        "Other": []
     }
 
-    for m in matches:
-        block = format_single_match(m)
-        category = m.get("proximity") or "other"
-        if category in sections:
-            sections[category].append(block)
-        else:
-            sections["other"].append(block)
+    for match in matches:
+        tag = match.get("location_tag", "Other")
+        buckets.setdefault(tag, []).append(match)
 
-    response_parts = []
-    if sections["near_you"]:
-        response_parts.append("📍 **Studies Near You:**\n" + "\n\n".join(sections["near_you"]))
-    if sections["national"]:
-        response_parts.append("🌐 **National Studies:**\n" + "\n\n".join(sections["national"]))
-    if sections["other"]:
-        response_parts.append("📎 **Other Options:**\n" + "\n\n".join(sections["other"]))
+    def format_group(label, studies):
+        if not studies:
+            return ""
+        out = f"\n\n### 🏷️ {label} Studies\n"
+        for i, match in enumerate(studies[:5], 1):
+            title = match.get("study_title", "Untitled")
+            link = match.get("link", "")
+            locs = match.get("locations", "")
+            summary = match.get("summary", "")
+            rationale = match.get("match_rationale", "")
+            eligibility = match.get("eligibility", "")
+            contact = match.get("contacts", "")
 
-    return "\n\n".join(response_parts)
+            out += (
+                f"\n**{i}. [{title}]({link})**\n"
+                f"📍 **Location**: {locs or 'Not specified'}\n"
+                f"📋 **Summary**: {summary[:300]}{'...' if len(summary) > 300 else ''}\n"
+                f"✅ **Why it matches**: {rationale}\n"
+                f"📄 **Eligibility Highlights**: {eligibility[:250]}{'...' if len(eligibility) > 250 else ''}\n"
+                f"☎️ **Contact**: {contact or 'Not provided'}\n"
+            )
+        return out
 
-def format_single_match(study, i=None):
-    title = study.get("study_title", "Untitled")
-    summary = study.get("brief_summary", "No summary available.")
-    eligibility = study.get("eligibility_summary", "Eligibility not listed.")
-    contact = study.get("contact", {})
-    loc = study.get("location", "Location not available.")
-    email = contact.get("email", "N/A")
-    phone = contact.get("phone", "N/A")
-    link = study.get("url", "")
-    confidence = study.get("match_score", 5)
-
-    match_reason = study.get("match_reason", "General match based on your profile.")
-
-    header = f"### {i}. {title}" if i else f"### {title}"
-    details = f"""{header}
-📍 Location: {loc}
-🔗 [View Study]({link})
-📋 Summary: {summary}
-🧪 Eligibility: {eligibility}
-📞 Contact: {email} / {phone}
-🤖 Match Confidence: {confidence}/10
-💡 Why this match: {match_reason}"""
-    return details.strip()
+    return (
+        format_group("Near You", buckets["Near You"]) +
+        format_group("National", buckets["National"]) +
+        format_group("Other", buckets["Other"])
+    ).strip()

@@ -1,50 +1,82 @@
+import math
 
-import re
-from datetime import datetime
-from math import radians, cos, sin, asin, sqrt
+def haversine_distance(coord1, coord2):
+    # Calculate distance in kilometers between two coordinate tuples
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    R = 6371  # Earth radius in km
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
 
-def haversine(lat1, lon1, lat2, lon2):
-    if None in [lat1, lon1, lat2, lon2]:
-        return None
-    R = 3956  # Miles
-    dlat = radians(lat2 - lat1)
-    dlon = radians(lon2 - lon1)
-    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
-    c = 2 * asin(sqrt(a))
-    return round(R * c, 1)
-
-def match_studies(participant, all_studies, exclude_river=False):
-    user_age = participant.get("age")
-    gender = participant.get("gender", "").lower()
-    user_lat, user_lon = (participant.get("coordinates") or (None, None))
-
+def match_studies(participant, studies, exclude_river=False):
     matches = []
-    for study in all_studies:
+    age = participant.get("age")
+    location = participant.get("coordinates")
+    diagnosis = (participant.get("diagnosis_history") or "").lower()
+
+    for study in studies:
         if exclude_river and "river" in study.get("study_title", "").lower():
             continue
 
-        min_age = study.get("min_age_num")
-        max_age = study.get("max_age_num")
-        study_gender = study.get("gender", "").lower()
+        score = 0
+        reasons = []
 
-        # Age and gender filters
-        if user_age is not None:
-            if min_age is not None and user_age < min_age:
-                continue
-            if max_age is not None and user_age > max_age:
-                continue
-        if study_gender and study_gender != "all" and gender and study_gender != gender:
-            continue
+        # Age-based matching
+        age_min = study.get("eligibility_min_age")
+        age_max = study.get("eligibility_max_age")
+        if age is not None and (age_min is not None or age_max is not None):
+            if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
+                continue  # disqualify
+            else:
+                score += 1
+                reasons.append("Matches your age range")
 
-        # Distance filter
-        study_lat = study.get("lat")
-        study_lon = study.get("lon")
-        distance = haversine(user_lat, user_lon, study_lat, study_lon)
-        study["match_distance_miles"] = distance
+        # Condition/diagnosis relevance
+        conditions = (study.get("conditions") or "").lower()
+        if any(term in conditions for term in diagnosis.split(", ")):
+            score += 2
+            reasons.append("Relevant condition match")
 
-        matches.append(study)
+        # Location score
+        loc_score = "Unknown"
+        if location and study.get("location_coords"):
+            dist = haversine_distance(location, study["location_coords"])
+            study["distance_km"] = round(dist, 1)
+            if dist <= 160:
+                loc_score = "Near You"
+                score += 2
+                reasons.append(f"Located near you (~{int(dist)} km)")
+            elif study.get("recruiting_nationwide"):
+                loc_score = "National"
+                score += 1
+                reasons.append("Open to nationwide participants")
+            else:
+                loc_score = "Other"
+        elif study.get("recruiting_nationwide"):
+            loc_score = "National"
+            score += 1
+            reasons.append("Open to nationwide participants")
+        else:
+            loc_score = "Other"
 
-    # Sort by distance (prioritize closer ones)
-    matches.sort(key=lambda s: s.get("match_distance_miles") or 9999)
+        matches.append({
+            "study_title": study.get("study_title"),
+            "summary": study.get("brief_summary"),
+            "conditions": study.get("conditions"),
+            "locations": study.get("locations"),
+            "contacts": study.get("contacts"),
+            "link": study.get("nct_link"),
+            "distance_km": study.get("distance_km", None),
+            "match_confidence": score,
+            "match_rationale": "; ".join(reasons),
+            "location_tag": loc_score,
+            "eligibility": study.get("eligibility_criteria", ""),
+        })
 
+    matches.sort(key=lambda m: m["match_confidence"], reverse=True)
     return matches
