@@ -23,7 +23,7 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to ask the user one question at a time and collect the following information in a conversational tone:
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect the following information:
 
 - Full Name
 - Email Address
@@ -32,34 +32,30 @@ SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job i
 - State
 - ZIP Code
 - Best Time to Reach You
-- Can we contact you via text message? (Yes / No)
+- Can we contact you via text message?
 - Date of birth (e.g., March 14, 1992)
 - Gender Identity
 - Race / Ethnicity
-- Are you a U.S. Veteran? (Yes / No)
-- Are you Native American or identify as Indigenous? (Yes / No)
-- Employment Status (Employed, Unemployed, Retired, Student, Other)
-- Annual Income Range
-- Do you have health insurance? (Yes / No / Prefer not to say)
-- Are you currently receiving any form of mental health care? (Yes / No)
-- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other (specify), or None
-- Have you ever tried prescribed treatments such as SSRIs or antidepressants? (Yes / No / Unsure)
-- Have you ever been diagnosed with bipolar disorder? (Yes / No)
-- Do you currently have high blood pressure that is not medically managed? (Yes / No / Unsure)
-- Have you used ketamine recreationally in the past? (Yes / No / Prefer not to say)
-- Are you currently pregnant or breastfeeding? (Yes / No / Prefer not to say)
-- Are you open to remote or at-home participation options? (Yes / No / Maybe)
-- Are you willing to participate in brief screening calls with a study team? (Yes / No / Maybe)
+- Are you a U.S. Veteran?
+- Are you Native American or identify as Indigenous?
+- Do you have health insurance?
+- Are you currently receiving any form of mental health care?
+- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other, or None
+- Have you ever tried SSRIs or antidepressants?
+- Have you ever been diagnosed with bipolar disorder?
+- Do you currently have high blood pressure that is not medically managed?
+- Have you used ketamine recreationally?
+- Are you currently pregnant or breastfeeding? (only if applicable)
+- Are you open to remote or at-home participation options?
+- Are you willing to participate in brief screening calls?
 - Preferred participation format: In-person / Remote / No preference
-- Do you speak a language other than English at home? If yes, what language(s)?
-- Are you open to being contacted about future mental health studies?
-- Anything else you'd like us to know about your mental health journey or study preferences?
+- Do you speak a language other than English at home?
+- Are you open to future studies?
+- Anything else you'd like us to know?
 
-Ask one question at a time. Once all information is collected, return ONLY a single JSON object with all fields as key-value pairs, like:
-{ "Full Name": "John Doe", "Email": "john@example.com", ... }
-
-❌ Do NOT summarize the answers, do NOT say thank you, and do NOT explain what you're doing.
-✅ Just return the raw JSON. Nothing else.
+💬 Say “Thanks for that!” after each response. Be friendly and conversational.
+❌ Do NOT summarize or repeat back responses.
+✅ Once all information is collected, return ONLY a single JSON object with all fields.
 """
 
 chat_histories = {}
@@ -89,6 +85,20 @@ def get_coordinates(city, state, zip_code):
     except Exception as e:
         print("⚠️ Failed to geocode location:", query, "→", str(e))
     return None
+
+def is_eligible_for_river(participant):
+    age = participant.get("age")
+    state = participant.get("state", "").strip().upper()
+    diagnosis = (participant.get("diagnosis_history") or "").lower()
+    
+    return (
+        age is not None and 21 <= age <= 75 and
+        state in ["CA", "MT"] and
+        any(cond in diagnosis for cond in ["depression", "anxiety", "ptsd"]) and
+        participant.get("bipolar", "").strip().lower() == "no" and
+        participant.get("blood_pressure", "").strip().lower() not in ["yes", "unsure"] and
+        participant.get("ketamine_use", "").strip().lower() != "yes"
+    )
 
 @app.post("/chat")
 async def chat_handler(request: Request):
@@ -169,11 +179,8 @@ async def chat_handler(request: Request):
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
 
-            # ✅ Check if required data is fully collected
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
-            missing_fields = [k for k in required_fields if not participant_data.get(k)]
-            if missing_fields:
-                print("⏳ Skipping match — missing:", missing_fields)
+            if any(not participant_data.get(k) for k in required_fields):
                 return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
             matches = match_studies(participant_data, all_studies)
@@ -184,7 +191,7 @@ async def chat_handler(request: Request):
                 return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
 
             for m in matches:
-                if "river" in m.get("study_title", "").lower():
+                if "river" in m.get("study_title", "").lower() and is_eligible_for_river(participant_data):
                     river_pending_confirmation[session_id] = participant_data
                     return {"reply": (
                         "🌊 You've been matched to our **River Program** for affordable at-home ketamine therapy with telehealth support.\n\n"
