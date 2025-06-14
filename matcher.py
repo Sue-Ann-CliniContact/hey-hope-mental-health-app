@@ -1,150 +1,50 @@
+
 import re
-from geopy.distance import geodesic
+from datetime import datetime
+from math import radians, cos, sin, asin, sqrt
 
-def extract_age_from_text(text):
-    matches = re.findall(r'(\d+)\s*(?:to|-|–|and)?\s*(\d+)?\s*(?:years|yrs)?', text.lower())
-    if matches:
-        try:
-            min_age = int(matches[0][0])
-            max_age = int(matches[0][1]) if matches[0][1] else 120
-            return min_age, max_age
-        except:
-            return None, None
-    return None, None
+def haversine(lat1, lon1, lat2, lon2):
+    if None in [lat1, lon1, lat2, lon2]:
+        return None
+    R = 3956  # Miles
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * asin(sqrt(a))
+    return round(R * c, 1)
 
-def is_mental_health_related(text: str) -> bool:
-    keywords = [
-        "depression", "anxiety", "ptsd", "bipolar", "mental health", 
-        "schizophrenia", "mood disorder", "gad", "panic disorder", "ocd"
-    ]
-    return any(k in text.lower() for k in keywords)
-
-def compute_score_and_group(study, user_coords):
-    score = 0
-    group = "Other"
-    full_text = " ".join([
-        study.get("study_title", ""),
-        study.get("summary", ""),
-        study.get("eligibility_text", "")
-    ]).lower()
-
-    if is_mental_health_related(full_text):
-        score += 5
-
-    coords = study.get("coordinates")
-    if user_coords and coords:
-        try:
-            lat2, lon2 = coords if isinstance(coords, (list, tuple)) else (coords["lat"], coords["lon"])
-            distance = geodesic(user_coords, (lat2, lon2)).miles
-            if distance <= 50:
-                score += 3
-                group = "🏠 Local Match"
-            elif distance <= 300:
-                score += 2
-                group = "🌐 National Match"
-            else:
-                score += 1
-        except:
-            score += 1
-    else:
-        score += 1
-
-    return score, group
-
-def match_studies(participant, studies, exclude_river=False):
+def match_studies(participant, all_studies, exclude_river=False):
     user_age = participant.get("age")
-    user_coords = participant.get("coordinates")
-    user_gender = participant.get("gender", "").lower()
-    if user_age is None:
-        return []
+    gender = participant.get("gender", "").lower()
+    user_lat, user_lon = (participant.get("coordinates") or (None, None))
 
-    results = []
-    river_candidate = None
-
-    for s in studies:
-        if s.get("recruitment_status", "").lower() != "recruiting":
+    matches = []
+    for study in all_studies:
+        if exclude_river and "river" in study.get("study_title", "").lower():
             continue
 
-        is_river = "river" in (s.get("study_title", "").lower() + " " + " ".join(s.get("tags", [])))
-        if exclude_river and is_river:
-            continue
+        min_age = study.get("min_age_num")
+        max_age = study.get("max_age_num")
+        study_gender = study.get("gender", "").lower()
 
-        min_a = s.get("min_age_years")
-        max_a = s.get("max_age_years")
-        if min_a is None or max_a is None:
-            min_a_fallback, max_a_fallback = extract_age_from_text(s.get("eligibility_text", ""))
-            min_a = min_a if min_a is not None else min_a_fallback or 0
-            max_a = max_a if max_a is not None else max_a_fallback or 120
-
-        if not (min_a <= user_age <= max_a):
-            continue
-
-        eligibility_text = s.get("eligibility_text", "").lower()
-        if any(term in eligibility_text for term in ["women only", "females only", "premenstrual", "female subjects"]):
-            if user_gender != "female":
+        # Age and gender filters
+        if user_age is not None:
+            if min_age is not None and user_age < min_age:
                 continue
-
-        if is_river:
-            state = participant.get("state", "").strip().upper()
-            diagnosis = participant.get("diagnosis_history", "")
-            diagnosis_list = [dx.strip().lower() for dx in diagnosis.split(",")] if isinstance(diagnosis, str) else []
-            if (
-                state in ["CA", "MT"] and
-                any(dx in ["depression", "ptsd", "anxiety"] for dx in diagnosis_list) and
-                participant.get("bipolar", "").lower() != "yes" and
-                participant.get("blood_pressure", "").lower() != "yes" and
-                participant.get("ketamine_use", "").lower() != "yes"
-            ):
-                river_candidate = s
+            if max_age is not None and user_age > max_age:
                 continue
-
-        score, group = compute_score_and_group(s, user_coords)
-        if score <= 0:
+        if study_gender and study_gender != "all" and gender and study_gender != gender:
             continue
 
-        rationale = []
-        if is_mental_health_related(" ".join([s.get("study_title", ""), s.get("eligibility_text", "")])):
-            rationale.append("Mental health relevance")
-        rationale.append(f"Age range {min_a}-{max_a}")
-        rationale.append(f"Proximity score {score}")
+        # Distance filter
+        study_lat = study.get("lat")
+        study_lon = study.get("lon")
+        distance = haversine(user_lat, user_lon, study_lat, study_lon)
+        study["match_distance_miles"] = distance
 
-        contact_parts = []
-        if s.get("contact_name"):
-            contact_parts.append(s["contact_name"])
-        if s.get("contact_email"):
-            contact_parts.append(s["contact_email"])
-        if s.get("contact_phone"):
-            contact_parts.append(s["contact_phone"])
-        contact = " | ".join(contact_parts) if contact_parts else "Not available"
+        matches.append(study)
 
-        results.append({
-            "study_title": s.get("study_title") or "No Title",
-            "location": s.get("location") or "Unknown",
-            "study_link": s.get("study_link") or f"https://clinicaltrials.gov/ct2/show/{s.get('nct_id','')}",
-            "summary": s.get("summary") or "No summary.",
-            "eligibility": s.get("eligibility_text") or "Not provided",
-            "contact": contact,
-            "match_confidence": score,
-            "match_rationale": "; ".join(rationale),
-            "group": group
-        })
+    # Sort by distance (prioritize closer ones)
+    matches.sort(key=lambda s: s.get("match_distance_miles") or 9999)
 
-    if river_candidate:
-        results.insert(0, {
-            "study_title": river_candidate.get("study_title", "River Study"),
-            "location": river_candidate.get("location", "Unknown"),
-            "study_link": river_candidate.get("study_link"),
-            "summary": river_candidate.get("summary", "No summary."),
-            "eligibility": river_candidate.get("eligibility_text", "Not provided"),
-            "contact": " | ".join(filter(None, [
-                river_candidate.get("contact_name"),
-                river_candidate.get("contact_email"),
-                river_candidate.get("contact_phone")
-            ])),
-            "match_confidence": 10,
-            "match_rationale": "Matched River Program eligibility",
-            "group": "🌐 National Match"
-        })
-
-    results.sort(key=lambda x: x["match_confidence"], reverse=True)
-    return results[:10]
+    return matches

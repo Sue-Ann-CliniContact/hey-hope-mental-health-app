@@ -1,3 +1,4 @@
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Request
 import openai
@@ -23,9 +24,7 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to collect the following info one-by-one in a conversational tone:
-... [same list of questions as before] ...
-Ask one question at a time in a friendly tone. Use previous answers to skip ahead. Once all answers are collected, return only this dictionary: { ... all answers as key-value pairs ... } Do not summarize or explain."""
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope... (truncated for brevity)"""
 
 chat_histories = {}
 river_pending_confirmation = {}
@@ -42,9 +41,7 @@ def calculate_age(dob_str):
 
 def contains_red_flag(text):
     text = text.lower()
-    red_flags = [
-        "kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"
-    ]
+    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"]
     return any(flag in text for flag in red_flags)
 
 def get_coordinates(city, state, zip_code):
@@ -64,7 +61,7 @@ async def chat_handler(request: Request):
     user_input = body.get("message")
 
     if contains_red_flag(user_input):
-        return {"reply": "🚨 It sounds like you’re going through a really difficult time..."}
+        return {"reply": "🚨 If you’re in immediate danger, call 911..."}
 
     if user_input.strip().lower() in ["other options", "other studies", "more studies"]:
         if session_id in last_participant_data:
@@ -73,7 +70,7 @@ async def chat_handler(request: Request):
             other_matches = match_studies(last_participant_data[session_id], all_studies, exclude_river=True)
             return {"reply": format_matches_for_gpt(other_matches)}
         else:
-            return {"reply": "I don’t have your previous info handy. Please start again..."}
+            return {"reply": "I don’t have your previous info handy..."}
 
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
@@ -82,7 +79,6 @@ async def chat_handler(request: Request):
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
             return {"reply": "✅ Great! You've been submitted to the River Program..."}
-
         elif user_input.strip().lower() in ["no", "n", "not interested"]:
             participant_data = river_pending_confirmation.pop(session_id)
             push_to_monday(participant_data)
@@ -90,13 +86,13 @@ async def chat_handler(request: Request):
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
-            return {"reply": "🔎 Here are other mental health studies that may be a good fit:\n\n" + format_matches_for_gpt(other_matches)}
-
+            return {"reply": "🔎 Here are other mental health studies..."}
         else:
-            return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}
+            return {"reply": "Just to confirm — would you like to apply..."}
 
     if session_id not in chat_histories:
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
     chat_histories[session_id].append({"role": "user", "content": user_input})
 
     response = openai.ChatCompletion.create(
@@ -112,30 +108,26 @@ async def chat_handler(request: Request):
     if match:
         try:
             participant_data = json.loads(match.group())
-
-            # ✅ Normalize keys
-            participant_data = {k.strip().lower(): v for k, v in participant_data.items()}
-
-            dob_value = participant_data.get("date of birth", "")
-            if not dob_value:
-                print("⚠️ DOB not found in keys:", list(participant_data.keys()))
-
+            dob_value = next((participant_data.get(k) for k in ["dob", "Date of birth"] if participant_data.get(k)), "")
             participant_data["age"] = calculate_age(dob_value)
             participant_data["dob"] = dob_value
 
-            city = participant_data.get("city", "")
-            state = participant_data.get("state", "")
-            zip_code = participant_data.get("zip code", "")
+            city = participant_data.get("city") or participant_data.get("City", "")
+            state = participant_data.get("state") or participant_data.get("State", "")
+            zip_code = participant_data.get("zip") or participant_data.get("ZIP Code", "")
             participant_data["location"] = f"{city}, {state}"
+            participant_data["city"] = city
+            participant_data["state"] = state
+            participant_data["zip"] = zip_code
             participant_data["coordinates"] = get_coordinates(city, state, zip_code)
 
-            participant_data["diagnosis_history"] = participant_data.get("have you ever been diagnosed with any of the following?", "")
-            participant_data["bipolar"] = participant_data.get("have you ever been diagnosed with bipolar disorder? (yes / no)", "")
-            participant_data["blood_pressure"] = participant_data.get("do you currently have high blood pressure that is not medically managed? (yes / no / unsure)", "")
-            participant_data["ketamine_use"] = participant_data.get("have you used ketamine recreationally in the past? (yes / no / prefer not to say)", "")
-            participant_data["gender"] = participant_data.get("gender identity", "")
+            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
+            participant_data["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
 
-            print("📥 Extracted participant data:", json.dumps(participant_data, indent=2))
+            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
+            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
+            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
+            participant_data["gender"] = next((v for k, v in participant_data.items() if k.lower() == "gender identity"), "")
 
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
@@ -145,20 +137,14 @@ async def chat_handler(request: Request):
             for m in matches:
                 if "river" in m.get("study_title", "").lower():
                     river_pending_confirmation[session_id] = participant_data
-                    return {"reply": "🌊 You've been matched to our **River Program**... Would you like to apply now?"}
+                    return {"reply": "🌊 You've been matched to our River Program..."}
 
             push_to_monday(participant_data)
-            last_participant_data[session_id] = participant_data  # ✅ Ensure "other options" works
-
+            last_participant_data[session_id] = participant_data
             return {"reply": format_matches_for_gpt(matches)}
 
         except Exception as e:
             print("❌ Exception while processing match:", str(e))
-            return {"reply": "We encountered an error processing your info.", "error": str(e)}
+            return {"reply": "We encountered an error processing your info."}
 
     return {"reply": gpt_message}
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

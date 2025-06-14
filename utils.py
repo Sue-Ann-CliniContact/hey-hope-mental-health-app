@@ -1,65 +1,46 @@
+
 def format_matches_for_gpt(matches):
     if not matches:
-        return "Sorry, we couldn’t find any matching studies based on the information provided."
+        return "😔 No eligible studies were found based on your info."
 
-    grouped = {"Near You": [], "National": [], "Other": []}
-    for match in matches:
-        group = match.get("group", "Other")
-        grouped.setdefault(group, []).append(match)
+    formatted = []
+    for i, study in enumerate(matches[:5], 1):
+        title = study.get("study_title", "Untitled Study")
+        location = study.get("location_summary") or "Location not specified"
+        summary = study.get("summary", "No summary available.")
+        eligibility = study.get("eligibility", "Eligibility details not provided.")
+        link = study.get("nct_link") or study.get("url", "")
+        contact_email = study.get("contact_email") or "Not listed"
+        distance = study.get("match_distance_miles")
+        match_reason = []
 
-    group_labels = {
-        "Near You": "🏠 **Local Match**",
-        "National": "🌐 **National Match**",
-        "Other": "📍 **Other Studies**"
-    }
+        if distance is not None:
+            if distance <= 50:
+                match_reason.append("near you")
+            else:
+                match_reason.append("national match")
+        if study.get("min_age_num") or study.get("max_age_num"):
+            match_reason.append("age-eligible")
+        if "gender" in study and study["gender"].lower() != "all":
+            match_reason.append(f"{study['gender'].lower()} participants")
 
-    lines = []
+        rationale = ", ".join(match_reason) if match_reason else "general eligibility"
 
-    for group in ["Near You", "National", "Other"]:
-        studies = grouped.get(group, [])
-        if not studies:
-            continue
-        lines.append(f"\n{group_labels[group]}\n")
+        formatted.append(
+            f"### {i}. {title}
+"
+            f"📍 **Location:** {location}
+"
+            f"📎 **Summary:** {summary}
+"
+            f"📄 **Eligibility:** {eligibility}
+"
+            f"🧭 **Match Rationale:** {rationale}
+"
+            f"✉️ **Contact:** {contact_email}
+"
+            f"🔗 **Study Link:** {link}
+"
+        )
 
-        for match in studies:
-            title = match.get('study_title') or "Untitled Study"
-            location = match.get('location') or "N/A"
-            link = match.get('study_link') or "#"
-            contact = match.get("contact", "")
-            summary = match.get("summary", "")
-            eligibility_text = match.get("eligibility", "").strip()
-            confidence = match.get("match_confidence")
-            rationale = match.get("match_rationale", "")
-
-            lines.append(f"**{title}**")
-            lines.append(f"**Location:** {location}")
-            lines.append(f"**Study Link:** [{link}]({link})")
-
-            if summary:
-                sentences = summary.strip().split(". ")
-                brief_summary = ". ".join(sentences[:2]).strip()
-                if not brief_summary.endswith("."):
-                    brief_summary += "."
-                lines.append(f"**Summary:** {brief_summary}")
-
-            if eligibility_text:
-                bullets = []
-                for line in eligibility_text.splitlines():
-                    stripped = line.strip("•*-– ")
-                    if len(stripped) > 3:
-                        bullets.append(f"- {stripped}")
-                if bullets:
-                    lines.append("**Eligibility:**")
-                    lines.extend(bullets[:5])
-
-            if contact and contact.lower() != "none":
-                lines.append(f"**Contact:** {contact}")
-
-            if confidence is not None:
-                lines.append(f"**Match Confidence:** {confidence}/10")
-            if rationale:
-                lines.append(f"**Match Rationale:** {rationale}")
-
-            lines.append("\n")
-
-    return "\n".join(lines).strip()
+    return "\n\n".join(formatted)
