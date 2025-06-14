@@ -50,6 +50,16 @@ def match_studies(participant, studies, exclude_river=False):
         if exclude_river and "river" in (study.get("study_title") or "").lower():
             continue
 
+        # 🚫 Gender-based exclusion logic
+        participant_gender = (participant.get("gender") or "").lower()
+        eligibility_text = (study.get("eligibility_text") or "").lower()
+        if participant_gender == "male":
+            if any(term in eligibility_text for term in [
+                "pregnant women", "pregnancy", "currently pregnant", "women aged",
+                "female only", "females only", "breastfeeding women"
+            ]):
+                continue  # skip studies not relevant for males
+
         score = 0
         reasons = []
 
