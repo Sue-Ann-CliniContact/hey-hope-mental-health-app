@@ -13,27 +13,27 @@ def format_matches_for_gpt(matches):
         buckets.setdefault(tag, []).append(match)
 
     def format_group(label, studies):
-    if not studies:
-        return ""
-    out = f"\n\n### 🏷️ {label} Studies\n"
-    for i, match in enumerate(studies[:5], 1):
-        title = match.get("study_title", "Untitled")
-        link = match.get("link", "")
-        locs = match.get("locations", "Not specified") or "Not specified"
-        summary = match.get("summary", "") or ""
-        rationale = match.get("match_rationale", "") or ""
-        eligibility = match.get("eligibility", "") or ""
-        contact = match.get("contacts", "") or "Not provided"
+        if not studies:
+            return ""
+        out = f"\n\n### 🏷️ {label} Studies\n"
+        for i, match in enumerate(studies[:5], 1):
+            title = match.get("study_title", "Untitled") or "Untitled"
+            link = match.get("link", "") or ""
+            locs = match.get("locations", "") or "Not specified"
+            summary = match.get("summary", "") or ""
+            rationale = match.get("match_rationale", "") or ""
+            eligibility = match.get("eligibility", "") or ""
+            contact = match.get("contacts", "") or "Not provided"
 
-        out += (
-            f"\n**{i}. [{title}]({link})**\n"
-            f"📍 **Location**: {locs}\n"
-            f"📋 **Summary**: {summary[:300]}{'...' if len(summary) > 300 else ''}\n"
-            f"✅ **Why it matches**: {rationale}\n"
-            f"📄 **Eligibility Highlights**: {eligibility[:250]}{'...' if len(eligibility) > 250 else ''}\n"
-            f"☎️ **Contact**: {contact}\n"
-        )
-    return out
+            out += (
+                f"\n**{i}. [{title}]({link})**\n"
+                f"📍 **Location**: {locs}\n"
+                f"📋 **Summary**: {summary[:300]}{'...' if len(summary) > 300 else ''}\n"
+                f"✅ **Why it matches**: {rationale}\n"
+                f"📄 **Eligibility Highlights**: {eligibility[:250]}{'...' if len(eligibility) > 250 else ''}\n"
+                f"☎️ **Contact**: {contact}\n"
+            )
+        return out
 
     return (
         format_group("Near You", buckets["Near You"]) +
