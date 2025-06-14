@@ -13,9 +13,11 @@ def extract_age_from_text(text):
     return None, None
 
 def is_mental_health_related(text: str) -> bool:
-    keywords = ["depression", "anxiety", "ptsd", "bipolar", "mental health", "schizophrenia", "mood disorder"]
-    tl = text.lower()
-    return any(k in tl for k in keywords)
+    keywords = [
+        "depression", "anxiety", "ptsd", "bipolar", "mental health", 
+        "schizophrenia", "mood disorder", "gad", "panic disorder", "ocd"
+    ]
+    return any(k in text.lower() for k in keywords)
 
 def compute_score_and_group(study, user_coords):
     score = 0
@@ -24,7 +26,7 @@ def compute_score_and_group(study, user_coords):
         study.get("study_title", ""),
         study.get("summary", ""),
         study.get("eligibility_text", "")
-    ])
+    ]).lower()
 
     if is_mental_health_related(full_text):
         score += 5
@@ -36,14 +38,14 @@ def compute_score_and_group(study, user_coords):
             distance = geodesic(user_coords, (lat2, lon2)).miles
             if distance <= 50:
                 score += 3
-                group = "Near You"
+                group = "🏠 Local Match"
             elif distance <= 300:
                 score += 2
-                group = "National"
+                group = "🌐 National Match"
             else:
                 score += 1
         except:
-            score += 1  # fallback if geodesic fails
+            score += 1
     else:
         score += 1
 
@@ -51,7 +53,7 @@ def compute_score_and_group(study, user_coords):
 
 def match_studies(participant, studies, exclude_river=False):
     user_age = participant.get("age")
-    user_coords = participant.get("coordinates")  # this should now be populated with (lat, lon)
+    user_coords = participant.get("coordinates")
     user_gender = participant.get("gender", "").lower()
     if user_age is None:
         return []
@@ -67,7 +69,6 @@ def match_studies(participant, studies, exclude_river=False):
         if exclude_river and is_river:
             continue
 
-        # Check age range
         min_a = s.get("min_age_years")
         max_a = s.get("max_age_years")
         if min_a is None or max_a is None:
@@ -78,13 +79,11 @@ def match_studies(participant, studies, exclude_river=False):
         if not (min_a <= user_age <= max_a):
             continue
 
-        # Filter out female-only studies if user is not female
         eligibility_text = s.get("eligibility_text", "").lower()
         if any(term in eligibility_text for term in ["women only", "females only", "premenstrual", "female subjects"]):
             if user_gender != "female":
                 continue
 
-        # River-specific eligibility logic
         if is_river:
             state = participant.get("state", "").strip().upper()
             diagnosis = participant.get("diagnosis_history", "")
@@ -144,7 +143,7 @@ def match_studies(participant, studies, exclude_river=False):
             ])),
             "match_confidence": 10,
             "match_rationale": "Matched River Program eligibility",
-            "group": "National"
+            "group": "🌐 National Match"
         })
 
     results.sort(key=lambda x: x["match_confidence"], reverse=True)
