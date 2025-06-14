@@ -54,25 +54,24 @@ def push_to_monday(participant_data):
         "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
-    # Add Rivers match if applicable
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
     query = '''
-    mutation ($board_id: Int!, $group_id: String!, $item_name: String!, $column_values: JSON!) {
-      create_item (
-        board_id: $board_id,
-        group_id: $group_id,
-        item_name: $item_name,
-        column_values: $column_values
-      ) {
-        id
-      }
+    mutation ($board_id: ID!, $group_id: String!, $item_name: String!, $column_values: JSON!) {
+        create_item (
+          board_id: $board_id,
+          group_id: $group_id,
+          item_name: $item_name,
+          column_values: $column_values
+        ) {
+          id
+        }
     }
     '''
 
     variables = {
-        "board_id": BOARD_ID,
+        "board_id": str(BOARD_ID),
         "group_id": GROUP_ID,
         "item_name": participant_data.get("name", "Hey Hope Lead"),
         "column_values": column_values
