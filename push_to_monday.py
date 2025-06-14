@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+from datetime import datetime
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
 BOARD_ID = 2003358867  # Hey Hope board
@@ -40,13 +41,22 @@ def push_to_monday(participant_data):
         if val:
             column_values[key] = val
 
-    # Optional but expected fields
+    # Populate all mapped fields
     safe_add("text_mkrw88sj", "city")
     safe_add("text_mkrwfpm2", "state")
     safe_add("text_mkrwbndm", "zip")
     safe_add("text_mkrw5hsj", "best_time")
     safe_add("text_mkrwey0s", "text_opt_in")
-    safe_add("text_mkrwk3tk", "dob")
+
+    # Date of Birth (convert to YYYY-MM-DD if possible)
+    dob_raw = sanitize(participant_data.get("dob", ""))
+    try:
+        dob_obj = datetime.strptime(dob_raw, "%B %d, %Y")
+        column_values["text_mkrwk3tk"] = dob_obj.strftime("%Y-%m-%d")
+    except Exception:
+        if dob_raw:
+            column_values["text_mkrwk3tk"] = dob_raw  # fallback
+
     safe_add("text_mkrwc5h6", "gender")
     safe_add("text_mkrwfv06", "ethnicity")
     safe_add("text_mkrw6ebk", "veteran")
@@ -69,6 +79,7 @@ def push_to_monday(participant_data):
     safe_add("text_mkrw27j4", "future_studies_opt_in")
     safe_add("text_mkrw4nbt", "notes")
 
+    # Rivers match indicator
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
