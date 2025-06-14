@@ -13,13 +13,12 @@ def push_to_monday(participant_data):
         "Content-Type": "application/json"
     }
 
-    # Fix phone number: must be in + format or remove countryShortName if unsure
     phone_value = participant_data.get("phone", "")
     if not phone_value.startswith("+"):
         phone_value = "+" + phone_value.lstrip("+")
 
     column_values = {
-        "name": participant_data.get("name", ""),
+        "name": participant_data.get("name", "No name provided"),
         "email_mkrwp3sg": {
             "email": participant_data.get("email", ""),
             "text": participant_data.get("email", "")
@@ -56,7 +55,7 @@ def push_to_monday(participant_data):
         "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
-    # Conditionally populate Rivers match column
+    # Add Rivers match tag if set
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
@@ -77,6 +76,10 @@ def push_to_monday(participant_data):
 
     response = requests.post(url, headers=headers, json={"query": query})
     data = response.json()
+
     if "errors" in data:
-        print("Error pushing to Monday:", data)
+        print("❌ Error pushing to Monday.com:", json.dumps(data, indent=2))
+    else:
+        print("✅ Successfully pushed to Monday.com:", data)
+
     return data

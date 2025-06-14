@@ -84,14 +84,19 @@ async def chat_handler(request: Request):
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
             participant_data = river_pending_confirmation.pop(session_id)
+            participant_data["rivers_match"] = True
             push_to_monday(participant_data)
-            return {"reply": "✅ Great! You've been submitted to the River Program. You'll be contacted shortly for the next steps."}
-        elif user_input.strip().lower() in ["no", "n", "not interested"]:
+            return {"reply": (
+                "✅ Great! You've been submitted to the River Program. You'll be contacted shortly for the next steps.\n\n"
+                "Would you also like to see other possible studies? Just type 'other options' to view more matches."
+            )}
+        elif user_input.strip().lower() in ["no", "n", "not interested", "other options"]:
             participant_data = river_pending_confirmation.pop(session_id)
             with open("indexed_studies.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
-            return {"reply": format_matches_for_gpt(other_matches)}
+            push_to_monday(participant_data)  # still push data
+            return {"reply": "🔎 Here are other mental health studies that may be a good fit:\n\n" + format_matches_for_gpt(other_matches)}
         else:
             return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}
 
@@ -113,7 +118,6 @@ async def chat_handler(request: Request):
     if match:
         try:
             participant_data = json.loads(match.group())
-
             dob_value = participant_data.get("dob") or participant_data.get("Date of birth")
             participant_data["age"] = calculate_age(dob_value or "")
             participant_data["dob"] = dob_value
