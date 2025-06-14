@@ -63,6 +63,8 @@ river_pending_confirmation = {}
 last_participant_data = {}
 
 def calculate_age(dob_str):
+    if not dob_str.strip():
+        return None
     try:
         dob = datetime.strptime(dob_str, "%B %d, %Y")
         today = datetime.today()
