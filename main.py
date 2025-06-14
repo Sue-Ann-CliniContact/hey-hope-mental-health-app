@@ -55,6 +55,7 @@ Ask one question at a time in a friendly tone. Use previous answers to skip ahea
 
 chat_histories = {}
 river_pending_confirmation = {}
+last_participant_data = {}
 
 def calculate_age(dob_str):
     try:
@@ -81,21 +82,32 @@ async def chat_handler(request: Request):
     if contains_red_flag(user_input):
         return {"reply": "🚨 It sounds like you’re going through a really difficult time. Please know that you’re not alone. If you’re in immediate danger, call 911. You can also call or text the 988 Suicide & Crisis Lifeline at 988 for free, 24/7 support."}
 
+    if user_input.strip().lower() in ["other options", "other studies", "more studies"]:
+        if session_id in last_participant_data:
+            with open("indexed_studies.json", "r") as f:
+                all_studies = json.load(f)
+            other_matches = match_studies(last_participant_data[session_id], all_studies, exclude_river=True)
+            return {"reply": format_matches_for_gpt(other_matches)}
+        else:
+            return {"reply": "I don’t have your previous info handy. Please start again to explore more study options."}
+
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
             participant_data = river_pending_confirmation.pop(session_id)
             participant_data["rivers_match"] = True
             push_to_monday(participant_data)
+            last_participant_data[session_id] = participant_data
             return {"reply": (
                 "✅ Great! You've been submitted to the River Program. You'll be contacted shortly for the next steps.\n\n"
                 "Would you also like to see other possible studies? Just type 'other options' to view more matches."
             )}
-        elif user_input.strip().lower() in ["no", "n", "not interested", "other options"]:
+        elif user_input.strip().lower() in ["no", "n", "not interested"]:
             participant_data = river_pending_confirmation.pop(session_id)
+            push_to_monday(participant_data)
+            last_participant_data[session_id] = participant_data
             with open("indexed_studies.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
-            push_to_monday(participant_data)  # still push data
             return {"reply": "🔎 Here are other mental health studies that may be a good fit:\n\n" + format_matches_for_gpt(other_matches)}
         else:
             return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}
@@ -158,6 +170,7 @@ async def chat_handler(request: Request):
                     )}
 
             push_to_monday(participant_data)
+            last_participant_data[session_id] = participant_data
             match_summary = format_matches_for_gpt(matches)
             return {"reply": match_summary}
 

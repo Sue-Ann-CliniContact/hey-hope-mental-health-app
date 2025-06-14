@@ -3,7 +3,7 @@ import requests
 import json
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
-BOARD_ID = 1987448172  # Hey Hope board
+BOARD_ID = 2003358867  # Hey Hope board
 GROUP_ID = "topics"
 
 def push_to_monday(participant_data):
