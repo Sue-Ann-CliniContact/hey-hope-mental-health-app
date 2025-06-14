@@ -18,7 +18,6 @@ def push_to_monday(participant_data):
         phone_value = "+" + phone_value.lstrip("+")
 
     column_values = {
-        "name": participant_data.get("name", "No name provided"),
         "email_mkrwp3sg": {
             "email": participant_data.get("email", ""),
             "text": participant_data.get("email", "")
@@ -59,28 +58,32 @@ def push_to_monday(participant_data):
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
-    # Serialize with proper escaping
-    column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
-
-    query = f'''
-    mutation {{
+    query = '''
+    mutation ($board_id: Int!, $group_id: String!, $item_name: String!, $column_values: JSON!) {
       create_item (
-        board_id: {BOARD_ID},
-        group_id: "{GROUP_ID}",
-        item_name: "{participant_data.get("name", "Hey Hope Lead")}",
-        column_values: "{column_values_str}"
-      ) {{
+        board_id: $board_id,
+        group_id: $group_id,
+        item_name: $item_name,
+        column_values: $column_values
+      ) {
         id
-      }}
-    }}
+      }
+    }
     '''
 
-    response = requests.post(url, headers=headers, json={"query": query})
+    variables = {
+        "board_id": BOARD_ID,
+        "group_id": GROUP_ID,
+        "item_name": participant_data.get("name", "Hey Hope Lead"),
+        "column_values": column_values
+    }
+
+    response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
     data = response.json()
 
     if "errors" in data:
         print("❌ Error pushing to Monday.com:", json.dumps(data, indent=2))
     else:
-        print("✅ Successfully pushed to Monday.com:", data)
+        print("✅ Successfully pushed to Monday.com:", json.dumps(data, indent=2))
 
     return data
