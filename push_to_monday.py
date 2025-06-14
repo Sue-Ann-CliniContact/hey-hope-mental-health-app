@@ -18,46 +18,56 @@ def push_to_monday(participant_data):
         "Content-Type": "application/json"
     }
 
-    phone_value = participant_data.get("phone", "")
-    if not phone_value.startswith("+"):
-        phone_value = "+" + phone_value.lstrip("+")
+    email = sanitize(participant_data.get("email", ""))
+    phone = sanitize(participant_data.get("phone", ""))
+    if phone and not phone.startswith("+"):
+        phone = "+" + phone.lstrip("+")
 
-    column_values = {
-        "email_mkrwp3sg": {
-            "email": sanitize(participant_data.get("email", "")),
-            "text": sanitize(participant_data.get("email", ""))
-        },
-        "phone_mkrwnw09": {
-            "phone": phone_value
-        },
-        "text_mkrw88sj": sanitize(participant_data.get("city", "")),
-        "text_mkrwfpm2": sanitize(participant_data.get("state", "")),
-        "text_mkrwbndm": sanitize(participant_data.get("zip", "")),
-        "text_mkrw5hsj": sanitize(participant_data.get("best_time", "")),
-        "text_mkrwey0s": sanitize(participant_data.get("text_opt_in", "")),
-        "text_mkrwk3tk": sanitize(participant_data.get("dob", "")),
-        "text_mkrwc5h6": sanitize(participant_data.get("gender", "")),
-        "text_mkrwfv06": sanitize(participant_data.get("ethnicity", "")),
-        "text_mkrw6ebk": sanitize(participant_data.get("veteran", "")),
-        "text_mkrwfp9q": sanitize(participant_data.get("indigenous", "")),
-        "text_mkrw6jhn": sanitize(participant_data.get("employment", "")),
-        "text_mkrwp4az": sanitize(participant_data.get("income", "")),
-        "text_mkrw2622": sanitize(participant_data.get("insurance", "")),
-        "text_mkrw4sz3": sanitize(participant_data.get("current_mental_care", "")),
-        "text_mkrw1n9t": sanitize(participant_data.get("diagnosis_history", "")),
-        "text_mkrw293d": sanitize(participant_data.get("ssri_use", "")),
-        "text_mkrwgytp": sanitize(participant_data.get("bipolar", "")),
-        "text_mkrwrdv6": sanitize(participant_data.get("blood_pressure", "")),
-        "text_mkrwcpt": sanitize(participant_data.get("ketamine_use", "")),
-        "text_mkrwts3h": sanitize(participant_data.get("pregnant", "")),
-        "text_mkrw3e9t": sanitize(participant_data.get("remote_ok", "")),
-        "text_mkrwnrrd": sanitize(participant_data.get("screening_calls_ok", "")),
-        "text_mkrwb4wx": sanitize(participant_data.get("preferred_format", "")),
-        "text_mkrw26r3": sanitize(participant_data.get("non_english_home", "")),
-        "text_mkrw250s": sanitize(participant_data.get("preferred_language", "")),
-        "text_mkrw27j4": sanitize(participant_data.get("future_studies_opt_in", "")),
-        "text_mkrw4nbt": sanitize(participant_data.get("notes", ""))
-    }
+    column_values = {}
+
+    if email:
+        column_values["email_mkrwp3sg"] = {
+            "email": email,
+            "text": email
+        }
+    if phone and len(phone) > 1:
+        column_values["phone_mkrwnw09"] = {
+            "phone": phone
+        }
+
+    def safe_add(key, field):
+        val = sanitize(participant_data.get(field, ""))
+        if val:
+            column_values[key] = val
+
+    # Optional but expected fields
+    safe_add("text_mkrw88sj", "city")
+    safe_add("text_mkrwfpm2", "state")
+    safe_add("text_mkrwbndm", "zip")
+    safe_add("text_mkrw5hsj", "best_time")
+    safe_add("text_mkrwey0s", "text_opt_in")
+    safe_add("text_mkrwk3tk", "dob")
+    safe_add("text_mkrwc5h6", "gender")
+    safe_add("text_mkrwfv06", "ethnicity")
+    safe_add("text_mkrw6ebk", "veteran")
+    safe_add("text_mkrwfp9q", "indigenous")
+    safe_add("text_mkrw6jhn", "employment")
+    safe_add("text_mkrwp4az", "income")
+    safe_add("text_mkrw2622", "insurance")
+    safe_add("text_mkrw4sz3", "current_mental_care")
+    safe_add("text_mkrw1n9t", "diagnosis_history")
+    safe_add("text_mkrw293d", "ssri_use")
+    safe_add("text_mkrwgytp", "bipolar")
+    safe_add("text_mkrwrdv6", "blood_pressure")
+    safe_add("text_mkrwcpt", "ketamine_use")
+    safe_add("text_mkrwts3h", "pregnant")
+    safe_add("text_mkrw3e9t", "remote_ok")
+    safe_add("text_mkrwnrrd", "screening_calls_ok")
+    safe_add("text_mkrwb4wx", "preferred_format")
+    safe_add("text_mkrw26r3", "non_english_home")
+    safe_add("text_mkrw250s", "preferred_language")
+    safe_add("text_mkrw27j4", "future_studies_opt_in")
+    safe_add("text_mkrw4nbt", "notes")
 
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
@@ -84,7 +94,7 @@ def push_to_monday(participant_data):
         "column_values": column_values
     }
 
-    print("📤 Monday Payload:", json.dumps(variables, indent=2))  # Debug payload before sending
+    print("📤 Monday Payload:", json.dumps(variables, indent=2))  # Debug payload
 
     try:
         response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
