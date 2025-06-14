@@ -1,46 +1,52 @@
 
 def format_matches_for_gpt(matches):
     if not matches:
-        return "😔 No eligible studies were found based on your info."
+        return "❌ No suitable matches were found at this time."
 
-    formatted = []
-    for i, study in enumerate(matches[:5], 1):
-        title = study.get("study_title", "Untitled Study")
-        location = study.get("location_summary") or "Location not specified"
-        summary = study.get("summary", "No summary available.")
-        eligibility = study.get("eligibility", "Eligibility details not provided.")
-        link = study.get("nct_link") or study.get("url", "")
-        contact_email = study.get("contact_email") or "Not listed"
-        distance = study.get("match_distance_miles")
-        match_reason = []
+    sections = {
+        "near_you": [],
+        "national": [],
+        "other": []
+    }
 
-        if distance is not None:
-            if distance <= 50:
-                match_reason.append("near you")
-            else:
-                match_reason.append("national match")
-        if study.get("min_age_num") or study.get("max_age_num"):
-            match_reason.append("age-eligible")
-        if "gender" in study and study["gender"].lower() != "all":
-            match_reason.append(f"{study['gender'].lower()} participants")
+    for m in matches:
+        block = format_single_match(m)
+        category = m.get("proximity") or "other"
+        if category in sections:
+            sections[category].append(block)
+        else:
+            sections["other"].append(block)
 
-        rationale = ", ".join(match_reason) if match_reason else "general eligibility"
+    response_parts = []
+    if sections["near_you"]:
+        response_parts.append("📍 **Studies Near You:**\n" + "\n\n".join(sections["near_you"]))
+    if sections["national"]:
+        response_parts.append("🌐 **National Studies:**\n" + "\n\n".join(sections["national"]))
+    if sections["other"]:
+        response_parts.append("📎 **Other Options:**\n" + "\n\n".join(sections["other"]))
 
-        formatted.append(
-            f"### {i}. {title}
-"
-            f"📍 **Location:** {location}
-"
-            f"📎 **Summary:** {summary}
-"
-            f"📄 **Eligibility:** {eligibility}
-"
-            f"🧭 **Match Rationale:** {rationale}
-"
-            f"✉️ **Contact:** {contact_email}
-"
-            f"🔗 **Study Link:** {link}
-"
-        )
+    return "\n\n".join(response_parts)
 
-    return "\n\n".join(formatted)
+def format_single_match(study, i=None):
+    title = study.get("study_title", "Untitled")
+    summary = study.get("brief_summary", "No summary available.")
+    eligibility = study.get("eligibility_summary", "Eligibility not listed.")
+    contact = study.get("contact", {})
+    loc = study.get("location", "Location not available.")
+    email = contact.get("email", "N/A")
+    phone = contact.get("phone", "N/A")
+    link = study.get("url", "")
+    confidence = study.get("match_score", 5)
+
+    match_reason = study.get("match_reason", "General match based on your profile.")
+
+    header = f"### {i}. {title}" if i else f"### {title}"
+    details = f"""{header}
+📍 Location: {loc}
+🔗 [View Study]({link})
+📋 Summary: {summary}
+🧪 Eligibility: {eligibility}
+📞 Contact: {email} / {phone}
+🤖 Match Confidence: {confidence}/10
+💡 Why this match: {match_reason}"""
+    return details.strip()
