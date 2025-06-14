@@ -4,7 +4,7 @@ import re
 def haversine_distance(coord1, coord2):
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    R = 6371
+    R = 6371  # Earth radius in km
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
@@ -13,14 +13,15 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
-# Synonym map for key mental health conditions
+# Allowlist of supported conditions
+MENTAL_HEALTH_TARGETS = {"depression", "anxiety", "ptsd"}
+
+# Synonym map for core matching
 SYNONYMS = {
     "depression": ["depression", "major depressive disorder", "mdd"],
     "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
-    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"]
+    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"],
 }
-
-PRIORITY_CONDITIONS = {"depression", "anxiety", "ptsd"}
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower()).strip()
@@ -33,8 +34,6 @@ def expand_terms(diagnosis_text):
             if norm in values:
                 terms.update(values)
                 break
-        else:
-            terms.add(norm)
     return terms
 
 def match_studies(participant, studies, exclude_river=False):
@@ -44,17 +43,13 @@ def match_studies(participant, studies, exclude_river=False):
     diagnosis = (participant.get("diagnosis_history") or "").lower()
     expanded_terms = expand_terms(diagnosis)
 
-    participant_gender = (participant.get("gender") or "").lower()
-    veteran_status = (participant.get("Are you a U.S. Veteran?") or "").strip().lower()
-    ketamine_use = (participant.get("ketamine_use") or "").strip().lower()
-
     for study in studies:
         if exclude_river and "river" in (study.get("study_title") or "").lower():
             continue
 
+        # 🚫 Gender exclusion
+        participant_gender = (participant.get("gender") or "").lower()
         eligibility_text = (study.get("eligibility_text") or "").lower()
-
-        # Gender-based exclusion
         if participant_gender == "male":
             if any(term in eligibility_text for term in [
                 "pregnant women", "pregnancy", "currently pregnant", "women aged",
@@ -62,25 +57,33 @@ def match_studies(participant, studies, exclude_river=False):
             ]):
                 continue
 
-        # Diagnosis/condition relevance — strict filter for priority terms
-        summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
-        norm_text = normalize(summary_text + " " + eligibility_text)
-        if not any(term in norm_text for term in PRIORITY_CONDITIONS):
-            continue
-
         score = 0
         reasons = []
 
-        # Age-based matching
+        # 📌 Condition filtering (tight gate)
+        summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
+        normalized_summary = normalize(summary_text)
+        if not any(term in normalized_summary for term in expanded_terms):
+            continue  # skip studies that don’t mention participant's condition
+
+        # 📌 Enforce study must focus on one of our core conditions
+        if not any(core in normalized_summary for core in MENTAL_HEALTH_TARGETS):
+            continue
+
+        score += 2
+        reasons.append("Relevant condition match")
+
+        # ✅ Age matching
         age_min = study.get("min_age_years")
         age_max = study.get("max_age_years")
         if age is not None and (age_min is not None or age_max is not None):
             if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
                 continue
-            score += 1
-            reasons.append("Matches your age range")
+            else:
+                score += 1
+                reasons.append("Matches your age range")
 
-        # Location-based scoring
+        # ✅ Location scoring
         loc_score = "Unknown"
         if location and study.get("coordinates"):
             dist = haversine_distance(location, study["coordinates"])
@@ -94,24 +97,7 @@ def match_studies(participant, studies, exclude_river=False):
         else:
             loc_score = "Other"
 
-        # Condition term match boosts
-        if any(term in norm_text for term in expanded_terms):
-            score += 2
-            reasons.append("Relevant condition match")
-
-        # Bonus if the study targets veterans and the user is a veteran
-        if veteran_status == "yes" and "veteran" in norm_text:
-            score += 1
-            reasons.append("Targets Veterans")
-
-        # Exclude or down-rank if ketamine use disqualifies the user
-        if "no recreational ketamine use" in norm_text or "exclude if used ketamine" in norm_text:
-            if ketamine_use == "yes":
-                continue
-            else:
-                score += 1
-                reasons.append("Meets ketamine use eligibility")
-
+        # 📝 Contact info
         contact_parts = []
         for key in ["contact_name", "contact_email", "contact_phone"]:
             val = study.get(key)
@@ -122,7 +108,7 @@ def match_studies(participant, studies, exclude_river=False):
         matches.append({
             "study_title": study.get("study_title"),
             "summary": study.get("summary", ""),
-            "conditions": norm_text,
+            "conditions": normalized_summary,
             "locations": study.get("location", "Not specified"),
             "contacts": contact_info,
             "link": study.get("study_link", ""),
