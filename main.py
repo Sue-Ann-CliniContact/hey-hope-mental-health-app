@@ -21,7 +21,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Updated to use Google Maps API ✅
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
 SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to collect the following info one-by-one in a conversational tone:
@@ -144,8 +143,12 @@ async def chat_handler(request: Request):
     if match:
         try:
             participant_data = json.loads(match.group())
-            dob_value = participant_data.get("dob") or participant_data.get("Date of birth")
-            participant_data["age"] = calculate_age(dob_value or "")
+
+            # 🌟 Fix: More robust DOB extraction
+            dob_value = next(
+                (participant_data.get(k) for k in ["dob", "Date of birth", "Date Of Birth", "Date Of birth", "Date OfBirth"] if participant_data.get(k)), ""
+            )
+            participant_data["age"] = calculate_age(dob_value)
             participant_data["dob"] = dob_value
 
             city = participant_data.get("city") or participant_data.get("City", "")
@@ -156,7 +159,7 @@ async def chat_handler(request: Request):
             participant_data["state"] = state
             participant_data["zip"] = zip_code
             participant_data["coordinates"] = get_coordinates(city, state, zip_code)
-            print("📍 User coordinates:", participant_data["coordinates"])  # Optional debug
+            print("📍 User coordinates:", participant_data["coordinates"])
 
             diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
             if isinstance(diagnosis, list):
