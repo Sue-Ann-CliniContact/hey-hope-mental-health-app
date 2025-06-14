@@ -81,7 +81,6 @@ async def chat_handler(request: Request):
     if contains_red_flag(user_input):
         return {"reply": "🚨 It sounds like you’re going through a really difficult time. Please know that you’re not alone. If you’re in immediate danger, call 911. You can also call or text the 988 Suicide & Crisis Lifeline at 988 for free, 24/7 support."}
 
-    # Handle River program confirmation logic
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
             participant_data = river_pending_confirmation.pop(session_id)
@@ -124,6 +123,19 @@ async def chat_handler(request: Request):
             participant_data["location"] = f"{city}, {state}"
             participant_data["city"] = city
             participant_data["state"] = state
+
+            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
+            if isinstance(diagnosis, list):
+                participant_data["diagnosis_history"] = ", ".join(diagnosis)
+            elif isinstance(diagnosis, str):
+                participant_data["diagnosis_history"] = diagnosis
+            else:
+                participant_data["diagnosis_history"] = ""
+
+            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
+            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
+            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
+            participant_data["gender"] = next((v for k, v in participant_data.items() if k.lower() == "gender identity"), "")
 
             print("📥 Extracted participant data:", json.dumps(participant_data, indent=2))
 

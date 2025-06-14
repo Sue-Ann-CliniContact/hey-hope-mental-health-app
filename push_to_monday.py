@@ -56,6 +56,10 @@ def push_to_monday(participant_data):
         "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
+    # Conditionally populate Rivers match column
+    if participant_data.get("rivers_match", False):
+        column_values["text_mkrxbqdc"] = "Yes"
+
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
 
     query = f'''

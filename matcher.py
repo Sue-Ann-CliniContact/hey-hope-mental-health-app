@@ -47,6 +47,7 @@ def compute_score_and_group(study, user_loc):
 def match_studies(participant, studies, exclude_river=False):
     user_age = participant.get("age")
     user_loc = participant.get("location")
+    user_gender = participant.get("gender", "").lower()
     if user_age is None:
         return []
 
@@ -57,10 +58,11 @@ def match_studies(participant, studies, exclude_river=False):
         if s.get("recruitment_status", "").lower() != "recruiting":
             continue
 
-        is_river = "river" in (s.get("study_title", "").lower() + " ".join(s.get("tags", [])))
+        is_river = "river" in (s.get("study_title", "").lower() + " " + " ".join(s.get("tags", [])))
         if exclude_river and is_river:
             continue
 
+        # Check age range
         min_a = s.get("min_age_years")
         max_a = s.get("max_age_years")
         if min_a is None or max_a is None:
@@ -71,47 +73,27 @@ def match_studies(participant, studies, exclude_river=False):
         if not (min_a <= user_age <= max_a):
             continue
 
-        # Check gender eligibility
-        eligibility_text = (s.get("eligibility_text") or "").lower()
-        user_gender = (participant.get("gender", "") or "").lower()
-        if "women only" in eligibility_text or "females only" in eligibility_text:
-            if "female" not in user_gender:
-                continue
-        if "men only" in eligibility_text or "males only" in eligibility_text:
-            if "male" not in user_gender:
+        # Filter out female-only studies if user is not female
+        eligibility_text = s.get("eligibility_text", "").lower()
+        if any(term in eligibility_text for term in ["women only", "females only", "premenstrual", "female subjects"]):
+            if user_gender != "female":
                 continue
 
-        # Handle River match logic
+        # River-specific eligibility logic
         if is_river:
             state = participant.get("state", "").strip().upper()
-            diagnosis = participant.get("diagnosis_history", "").lower()
+            diagnosis = participant.get("diagnosis_history", "")
+            diagnosis_list = [dx.strip().lower() for dx in diagnosis.split(",")] if isinstance(diagnosis, str) else []
             if (
                 state in ["CA", "MT"] and
-                any(dx in diagnosis for dx in ["depression", "ptsd", "anxiety"]) and
+                any(dx in ["depression", "ptsd", "anxiety"] for dx in diagnosis_list) and
                 participant.get("bipolar", "").lower() != "yes" and
                 participant.get("blood_pressure", "").lower() != "yes" and
                 participant.get("ketamine_use", "").lower() != "yes"
             ):
                 river_candidate = s
-                # Do not skip: include in results
-                score = 10
-                group = "National"
-                rationale = ["Matched River Program eligibility"]
-                contact_parts = list(filter(None, [s.get("contact_name"), s.get("contact_email"), s.get("contact_phone")]))
-                results.append({
-                    "study_title": s.get("study_title", "River Study"),
-                    "location": s.get("location", "Unknown"),
-                    "study_link": s.get("study_link"),
-                    "summary": s.get("summary", "No summary."),
-                    "eligibility": s.get("eligibility_text", "Not provided"),
-                    "contact": " | ".join(contact_parts) if contact_parts else "Not available",
-                    "match_confidence": score,
-                    "match_rationale": "; ".join(rationale),
-                    "group": group
-                })
-                continue  # Avoid double-adding this match
+                continue
 
-        # Score and group normal studies
         score, group = compute_score_and_group(s, user_loc)
         if score <= 0:
             continue
@@ -141,6 +123,23 @@ def match_studies(participant, studies, exclude_river=False):
             "match_confidence": score,
             "match_rationale": "; ".join(rationale),
             "group": group
+        })
+
+    if river_candidate:
+        results.insert(0, {
+            "study_title": river_candidate.get("study_title", "River Study"),
+            "location": river_candidate.get("location", "Unknown"),
+            "study_link": river_candidate.get("study_link"),
+            "summary": river_candidate.get("summary", "No summary."),
+            "eligibility": river_candidate.get("eligibility_text", "Not provided"),
+            "contact": " | ".join(filter(None, [
+                river_candidate.get("contact_name"),
+                river_candidate.get("contact_email"),
+                river_candidate.get("contact_phone")
+            ])),
+            "match_confidence": 10,
+            "match_rationale": "Matched River Program eligibility",
+            "group": "National"
         })
 
     results.sort(key=lambda x: x["match_confidence"], reverse=True)
