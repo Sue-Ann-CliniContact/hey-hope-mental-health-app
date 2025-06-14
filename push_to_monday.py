@@ -55,10 +55,11 @@ def push_to_monday(participant_data):
         "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
-    # Add Rivers match tag if set
+    # Add Rivers match if applicable
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
+    # Serialize with proper escaping
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
 
     query = f'''

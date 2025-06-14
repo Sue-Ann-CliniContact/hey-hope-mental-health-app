@@ -17,7 +17,7 @@ def is_mental_health_related(text: str) -> bool:
     tl = text.lower()
     return any(k in tl for k in keywords)
 
-def compute_score_and_group(study, user_loc):
+def compute_score_and_group(study, user_coords):
     score = 0
     group = "Other"
     full_text = " ".join([
@@ -30,15 +30,20 @@ def compute_score_and_group(study, user_loc):
         score += 5
 
     coords = study.get("coordinates")
-    if user_loc and coords:
-        lat2, lon2 = coords if isinstance(coords, (list, tuple)) else (coords["lat"], coords["lon"])
-        dist = geodesic(user_loc, (lat2, lon2)).miles
-        if dist <= 50:
-            score += 3
-            group = "Near You"
-        elif dist <= 300:
-            score += 2
-            group = "National"
+    if user_coords and coords:
+        try:
+            lat2, lon2 = coords if isinstance(coords, (list, tuple)) else (coords["lat"], coords["lon"])
+            distance = geodesic(user_coords, (lat2, lon2)).miles
+            if distance <= 50:
+                score += 3
+                group = "Near You"
+            elif distance <= 300:
+                score += 2
+                group = "National"
+            else:
+                score += 1
+        except:
+            score += 1  # fallback if geodesic fails
     else:
         score += 1
 
@@ -46,7 +51,7 @@ def compute_score_and_group(study, user_loc):
 
 def match_studies(participant, studies, exclude_river=False):
     user_age = participant.get("age")
-    user_loc = participant.get("location")
+    user_coords = participant.get("coordinates")  # this should now be populated with (lat, lon)
     user_gender = participant.get("gender", "").lower()
     if user_age is None:
         return []
@@ -94,7 +99,7 @@ def match_studies(participant, studies, exclude_river=False):
                 river_candidate = s
                 continue
 
-        score, group = compute_score_and_group(s, user_loc)
+        score, group = compute_score_and_group(s, user_coords)
         if score <= 0:
             continue
 

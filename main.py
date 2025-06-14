@@ -8,6 +8,7 @@ from matcher import match_studies
 from utils import format_matches_for_gpt
 from push_to_monday import push_to_monday
 from datetime import datetime
+from geopy.geocoders import Nominatim
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -19,6 +20,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+geolocator = Nominatim(user_agent="hey-hope-bot")
 
 SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to collect the following info one-by-one in a conversational tone:
 - Full Name
@@ -73,6 +76,16 @@ def contains_red_flag(text):
     ]
     return any(flag in text for flag in red_flags)
 
+def get_coordinates(city, state, zip_code):
+    try:
+        query = f"{city}, {state} {zip_code}".strip()
+        loc = geolocator.geocode(query)
+        if loc:
+            return (loc.latitude, loc.longitude)
+    except Exception as e:
+        print("⚠️ Failed to geocode location:", query, "→", str(e))
+    return None
+
 @app.post("/chat")
 async def chat_handler(request: Request):
     body = await request.json()
@@ -84,7 +97,7 @@ async def chat_handler(request: Request):
 
     if user_input.strip().lower() in ["other options", "other studies", "more studies"]:
         if session_id in last_participant_data:
-            with open("indexed_studies.json", "r") as f:
+            with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(last_participant_data[session_id], all_studies, exclude_river=True)
             return {"reply": format_matches_for_gpt(other_matches)}
@@ -105,7 +118,7 @@ async def chat_handler(request: Request):
             participant_data = river_pending_confirmation.pop(session_id)
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
-            with open("indexed_studies.json", "r") as f:
+            with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
             return {"reply": "🔎 Here are other mental health studies that may be a good fit:\n\n" + format_matches_for_gpt(other_matches)}
@@ -136,9 +149,12 @@ async def chat_handler(request: Request):
 
             city = participant_data.get("city") or participant_data.get("City", "")
             state = participant_data.get("state") or participant_data.get("State", "")
+            zip_code = participant_data.get("zip") or participant_data.get("ZIP Code", "")
             participant_data["location"] = f"{city}, {state}"
             participant_data["city"] = city
             participant_data["state"] = state
+            participant_data["zip"] = zip_code
+            participant_data["coordinates"] = get_coordinates(city, state, zip_code)
 
             diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
             if isinstance(diagnosis, list):
@@ -155,7 +171,7 @@ async def chat_handler(request: Request):
 
             print("📥 Extracted participant data:", json.dumps(participant_data, indent=2))
 
-            with open("indexed_studies.json", "r") as f:
+            with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
 
             matches = match_studies(participant_data, all_studies)
@@ -171,8 +187,7 @@ async def chat_handler(request: Request):
 
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
-            match_summary = format_matches_for_gpt(matches)
-            return {"reply": match_summary}
+            return {"reply": format_matches_for_gpt(matches)}
 
         except Exception as e:
             print("❌ Exception while processing match:", str(e))
