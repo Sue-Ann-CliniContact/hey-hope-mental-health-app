@@ -19,71 +19,66 @@ def push_to_monday(participant_data):
         "Content-Type": "application/json"
     }
 
-    email = sanitize(participant_data.get("email", ""))
-    phone = sanitize(participant_data.get("phone", ""))
+    # Normalize keys to lowercase for consistent mapping
+    participant_data = {k.strip().lower(): v for k, v in participant_data.items()}
+
+    email = sanitize(participant_data.get("email address", ""))
+    phone = sanitize(participant_data.get("phone number", ""))
     if phone and not phone.startswith("+"):
         phone = "+" + phone.lstrip("+")
 
     column_values = {}
 
     if email:
-        column_values["email_mkrwp3sg"] = {
-            "email": email,
-            "text": email
-        }
+        column_values["email_mkrwp3sg"] = {"email": email, "text": email}
     if phone and len(phone) > 1:
-        column_values["phone_mkrwnw09"] = {
-            "phone": phone
-        }
+        column_values["phone_mkrwnw09"] = {"phone": phone}
 
-    def safe_add(key, field):
-        val = sanitize(participant_data.get(field, ""))
+    def safe_add(key, field_name):
+        val = sanitize(participant_data.get(field_name.lower(), ""))
         if val:
             column_values[key] = val
 
-    # Populate all mapped fields
     safe_add("text_mkrw88sj", "city")
     safe_add("text_mkrwfpm2", "state")
-    safe_add("text_mkrwbndm", "zip")
-    safe_add("text_mkrw5hsj", "best_time")
-    safe_add("text_mkrwey0s", "text_opt_in")
+    safe_add("text_mkrwbndm", "zip code")
+    safe_add("text_mkrw5hsj", "best time to reach you")
+    safe_add("text_mkrwey0s", "can we contact you via text message? (yes / no)")
 
-    # Date of Birth (convert to YYYY-MM-DD if possible)
-    dob_raw = sanitize(participant_data.get("dob", ""))
+    dob_raw = sanitize(participant_data.get("date of birth", ""))
     try:
         dob_obj = datetime.strptime(dob_raw, "%B %d, %Y")
         column_values["text_mkrwk3tk"] = dob_obj.strftime("%Y-%m-%d")
     except Exception:
         if dob_raw:
-            column_values["text_mkrwk3tk"] = dob_raw  # fallback
+            column_values["text_mkrwk3tk"] = dob_raw
 
-    safe_add("text_mkrwc5h6", "gender")
-    safe_add("text_mkrwfv06", "ethnicity")
-    safe_add("text_mkrw6ebk", "veteran")
-    safe_add("text_mkrwfp9q", "indigenous")
-    safe_add("text_mkrw6jhn", "employment")
-    safe_add("text_mkrwp4az", "income")
-    safe_add("text_mkrw2622", "insurance")
-    safe_add("text_mkrw4sz3", "current_mental_care")
-    safe_add("text_mkrw1n9t", "diagnosis_history")
-    safe_add("text_mkrw293d", "ssri_use")
-    safe_add("text_mkrwgytp", "bipolar")
-    safe_add("text_mkrwrdv6", "blood_pressure")
-    safe_add("text_mkrwcpt", "ketamine_use")
-    safe_add("text_mkrwts3h", "pregnant")
-    safe_add("text_mkrw3e9t", "remote_ok")
-    safe_add("text_mkrwnrrd", "screening_calls_ok")
-    safe_add("text_mkrwb4wx", "preferred_format")
-    safe_add("text_mkrw26r3", "non_english_home")
-    safe_add("text_mkrw250s", "preferred_language")
-    safe_add("text_mkrw27j4", "future_studies_opt_in")
-    safe_add("text_mkrw4nbt", "notes")
+    safe_add("text_mkrwc5h6", "gender identity")
+    safe_add("text_mkrwfv06", "race / ethnicity")
+    safe_add("text_mkrw6ebk", "are you a u.s. veteran? (yes / no)")
+    safe_add("text_mkrwfp9q", "are you native american or identify as indigenous? (yes / no)")
+    safe_add("text_mkrw6jhn", "employment status (employed, unemployed, retired, student, other)")
+    safe_add("text_mkrwp4az", "annual income range")
+    safe_add("text_mkrw2622", "do you have health insurance? (yes / no / prefer not to say)")
+    safe_add("text_mkrw4sz3", "are you currently receiving any form of mental health care? (yes / no)")
+    safe_add("text_mkrw1n9t", "have you ever been diagnosed with any of the following?")
+    safe_add("text_mkrw293d", "have you ever tried prescribed treatments such as ssris or antidepressants? (yes / no / unsure)")
+    safe_add("text_mkrwgytp", "have you ever been diagnosed with bipolar disorder? (yes / no)")
+    safe_add("text_mkrwrdv6", "do you currently have high blood pressure that is not medically managed? (yes / no / unsure)")
+    safe_add("text_mkrwcpt", "have you used ketamine recreationally in the past? (yes / no / prefer not to say)")
+    safe_add("text_mkrwts3h", "are you currently pregnant or breastfeeding? (yes / no / prefer not to say)")
+    safe_add("text_mkrw3e9t", "are you open to remote or at-home participation options? (yes / no / maybe)")
+    safe_add("text_mkrwnrrd", "are you willing to participate in brief screening calls with a study team? (yes / no / maybe)")
+    safe_add("text_mkrwb4wx", "preferred participation format")
+    safe_add("text_mkrw26r3", "do you speak a language other than english at home? (yes / no)")
+    safe_add("text_mkrw250s", "if yes: what language(s) do you prefer to communicate in?")
+    safe_add("text_mkrw27j4", "are you open to being contacted about future mental health studies?")
+    safe_add("text_mkrw4nbt", "anything else you'd like us to know about your mental health journey or study preferences?")
 
-    # Rivers match indicator
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
-    item_name = sanitize(participant_data.get("name", "Hey Hope Lead"))
+    item_name = sanitize(participant_data.get("full name", "Hey Hope Lead"))
 
     query = '''
     mutation ($board_id: ID!, $group_id: String!, $item_name: String!, $column_values: JSON!) {
@@ -102,10 +97,10 @@ def push_to_monday(participant_data):
         "board_id": str(BOARD_ID),
         "group_id": GROUP_ID,
         "item_name": item_name,
-        "column_values": json.dumps(column_values)  # ✅ Encode column_values as JSON string
+        "column_values": json.dumps(column_values)
     }
 
-    print("📤 Monday Payload:", json.dumps(variables, indent=2))  # Debug payload
+    print("📤 Monday Payload:", json.dumps(variables, indent=2))
 
     try:
         response = requests.post(url, headers=headers, json={"query": query, "variables": variables})
