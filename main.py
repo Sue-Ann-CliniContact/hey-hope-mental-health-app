@@ -8,7 +8,7 @@ from matcher import match_studies
 from utils import format_matches_for_gpt
 from push_to_monday import push_to_monday
 from datetime import datetime
-from geopy.geocoders import Nominatim
+from geopy.geocoders import GoogleV3  # Updated line ✅
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -21,7 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-geolocator = Nominatim(user_agent="hey-hope-bot")
+# Updated to use Google Maps API ✅
+geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
 SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Your job is to collect the following info one-by-one in a conversational tone:
 - Full Name
@@ -155,6 +156,7 @@ async def chat_handler(request: Request):
             participant_data["state"] = state
             participant_data["zip"] = zip_code
             participant_data["coordinates"] = get_coordinates(city, state, zip_code)
+            print("📍 User coordinates:", participant_data["coordinates"])  # Optional debug
 
             diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
             if isinstance(diagnosis, list):
