@@ -8,7 +8,7 @@ from matcher import match_studies
 from utils import format_matches_for_gpt
 from push_to_monday import push_to_monday
 from datetime import datetime
-from geopy.geocoders import GoogleV3  # Updated line ✅
+from geopy.geocoders import GoogleV3
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -144,10 +144,15 @@ async def chat_handler(request: Request):
         try:
             participant_data = json.loads(match.group())
 
-            # 🌟 Fix: More robust DOB extraction
-            dob_value = next(
-                (participant_data.get(k) for k in ["dob", "Date of birth", "Date Of Birth", "Date Of birth", "Date OfBirth"] if participant_data.get(k)), ""
-            )
+            # ✅ Fixed: Case-insensitive DOB key handling
+            dob_value = ""
+            for k, v in participant_data.items():
+                if k.strip().lower() in ["dob", "date of birth"] and v:
+                    dob_value = v
+                    break
+            if not dob_value:
+                print("⚠️ DOB not found in participant_data keys:", list(participant_data.keys()))
+
             participant_data["age"] = calculate_age(dob_value)
             participant_data["dob"] = dob_value
 
