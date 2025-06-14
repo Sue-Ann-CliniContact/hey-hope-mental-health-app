@@ -4,23 +4,23 @@ import re
 def haversine_distance(coord1, coord2):
     lat1, lon1 = coord1
     lat2, lon2 = coord2
-    R = 6371  # Earth radius in km
+    R = 6371
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     delta_phi = math.radians(lat2 - lat1)
     delta_lambda = math.radians(lon2 - lon1)
-    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
+# Synonym map for key mental health conditions
 SYNONYMS = {
     "depression": ["depression", "major depressive disorder", "mdd"],
     "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
-    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"],
-    "bipolar": ["bipolar", "bipolar disorder", "manic depression"],
-    "adhd": ["adhd", "attention deficit hyperactivity disorder"],
-    "autism": ["autism", "asd", "autism spectrum disorder"]
+    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"]
 }
+
+PRIORITY_CONDITIONS = {"depression", "anxiety", "ptsd"}
 
 def normalize(text):
     return re.sub(r"[^\w\s]", "", text.lower()).strip()
@@ -43,17 +43,18 @@ def match_studies(participant, studies, exclude_river=False):
     location = participant.get("coordinates")
     diagnosis = (participant.get("diagnosis_history") or "").lower()
     expanded_terms = expand_terms(diagnosis)
+
+    participant_gender = (participant.get("gender") or "").lower()
+    veteran_status = (participant.get("Are you a U.S. Veteran?") or "").strip().lower()
     ketamine_use = (participant.get("ketamine_use") or "").strip().lower()
-    is_veteran = (participant.get("Are you a U.S. Veteran?") or "").strip().lower() == "yes"
 
     for study in studies:
         if exclude_river and "river" in (study.get("study_title") or "").lower():
             continue
 
-        participant_gender = (participant.get("gender") or "").lower()
         eligibility_text = (study.get("eligibility_text") or "").lower()
 
-        # Gender exclusion
+        # Gender-based exclusion
         if participant_gender == "male":
             if any(term in eligibility_text for term in [
                 "pregnant women", "pregnancy", "currently pregnant", "women aged",
@@ -61,13 +62,11 @@ def match_studies(participant, studies, exclude_river=False):
             ]):
                 continue
 
-        # ❌ Exclude if ketamine use is YES and study bans it
-        if ketamine_use == "yes":
-            if any(term in eligibility_text for term in [
-                "no ketamine", "not used ketamine", "exclude if used ketamine",
-                "must not have used ketamine", "no history of ketamine use"
-            ]):
-                continue
+        # Diagnosis/condition relevance — strict filter for priority terms
+        summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
+        norm_text = normalize(summary_text + " " + eligibility_text)
+        if not any(term in norm_text for term in PRIORITY_CONDITIONS):
+            continue
 
         score = 0
         reasons = []
@@ -78,25 +77,10 @@ def match_studies(participant, studies, exclude_river=False):
         if age is not None and (age_min is not None or age_max is not None):
             if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
                 continue
-            else:
-                score += 1
-                reasons.append("Matches your age range")
+            score += 1
+            reasons.append("Matches your age range")
 
-        # Mental health condition relevance
-        combined_text = (
-            (study.get("study_title") or "") + " " +
-            (study.get("summary") or "") + " " +
-            (study.get("eligibility_text") or "")
-        )
-        combined_text = normalize(combined_text)
-
-        if not any(term in combined_text for term in expanded_terms):
-            continue
-
-        score += 2
-        reasons.append("Relevant condition match")
-
-        # Location matching
+        # Location-based scoring
         loc_score = "Unknown"
         if location and study.get("coordinates"):
             dist = haversine_distance(location, study["coordinates"])
@@ -110,12 +94,23 @@ def match_studies(participant, studies, exclude_river=False):
         else:
             loc_score = "Other"
 
-        # ✅ Veteran boost
-        if is_veteran and any(vet_term in combined_text for vet_term in [
-            "veteran", "veterans", "military", "former military", "army", "navy", "air force", "marine corps"
-        ]):
+        # Condition term match boosts
+        if any(term in norm_text for term in expanded_terms):
             score += 2
-            reasons.append("Specifically targets veterans")
+            reasons.append("Relevant condition match")
+
+        # Bonus if the study targets veterans and the user is a veteran
+        if veteran_status == "yes" and "veteran" in norm_text:
+            score += 1
+            reasons.append("Targets Veterans")
+
+        # Exclude or down-rank if ketamine use disqualifies the user
+        if "no recreational ketamine use" in norm_text or "exclude if used ketamine" in norm_text:
+            if ketamine_use == "yes":
+                continue
+            else:
+                score += 1
+                reasons.append("Meets ketamine use eligibility")
 
         contact_parts = []
         for key in ["contact_name", "contact_email", "contact_phone"]:
@@ -127,7 +122,7 @@ def match_studies(participant, studies, exclude_river=False):
         matches.append({
             "study_title": study.get("study_title"),
             "summary": study.get("summary", ""),
-            "conditions": combined_text,
+            "conditions": norm_text,
             "locations": study.get("location", "Not specified"),
             "contacts": contact_info,
             "link": study.get("study_link", ""),
