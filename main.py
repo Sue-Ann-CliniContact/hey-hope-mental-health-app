@@ -172,6 +172,8 @@ def flatten_dict(d, parent_key='', sep=' - '):
             items[new_key] = v
     return items
 
+# ... [imports and setup above this remain unchanged]
+
 def normalize_participant_data(raw):
     key_map = {k.lower(): k for k in raw}
 
@@ -182,24 +184,38 @@ def normalize_participant_data(raw):
                 return match
         return ""
 
+    # Core identity and contact
     raw["dob"] = raw.get("dob") or get_any("date of birth")
-    raw["city"] = raw.get("city") or get_any("city")
-    raw["state"] = normalize_state(raw.get("state") or get_any("state"))
-    raw["zip"] = raw.get("zip") or get_any("zip code")
+    raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
     raw["gender"] = raw.get("gender") or get_any("gender identity")
-    raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number", "mobile"))
+    raw["zip"] = raw.get("zip") or get_any("zip code")
 
-    raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("diagnosed with any of the following", "mental health conditions")
-    if isinstance(raw["diagnosis_history"], list):
-        raw["diagnosis_history"] = ", ".join(raw["diagnosis_history"])
+    # 📍 Location splitting
+    loc = raw.get("location") or get_any("location")
+    if loc and "," in loc:
+        parts = [p.strip() for p in loc.split(",")]
+        raw["city"] = parts[0]
+        raw["state"] = normalize_state(parts[1]) if len(parts) > 1 else ""
+    else:
+        raw["city"] = raw.get("city") or get_any("city")
+        raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
+    # 🧠 Conditions
+    conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
+    if isinstance(conds, list):
+        raw["diagnosis_history"] = ", ".join(conds)
+    else:
+        raw["diagnosis_history"] = conds
+
+    # 👤 Derived and special fields
     raw["age"] = calculate_age(raw["dob"])
     raw["location"] = f"{raw['city']}, {raw['state']}"
     raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
+    # ✅ River-related logic
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
-    raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine recreationally")
+    raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine therapy", "ketamine use")
 
     if raw.get("gender", "").lower() == "male":
         raw["pregnant"] = "No"
