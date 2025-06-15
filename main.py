@@ -107,22 +107,24 @@ def is_eligible_for_river(participant):
 # (Same preamble as before: imports, setup...)
 
 def normalize_participant_data(raw):
-    # Normalize various field variants with case-insensitive matching
+    # Lowercase map of keys to originals
     key_map = {k.lower(): k for k in raw}
 
     def get_any(*keys):
         for key in keys:
-            if key.lower() in key_map:
-                return raw[key_map[key.lower()]]
+            match = next((raw[v] for k, v in key_map.items() if key.lower() in k), None)
+            if match:
+                return match
         return ""
 
-    raw["dob"] = raw.get("dob") or get_any("Date of Birth", "Date of birth")
-    raw["city"] = raw.get("city") or get_any("City")
-    raw["state"] = raw.get("state") or get_any("State")
-    raw["zip"] = raw.get("zip") or get_any("ZIP Code", "Zip Code", "zip code")
+    raw["dob"] = raw.get("dob") or get_any("date of birth")
+    raw["city"] = raw.get("city") or get_any("city")
+    raw["state"] = raw.get("state") or get_any("state")
+    raw["zip"] = raw.get("zip") or get_any("zip code")
+    raw["gender"] = raw.get("gender") or get_any("gender identity")
 
-    raw["gender"] = raw.get("gender") or get_any("Gender Identity")
-    raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other, or None")
+    # Grab diagnosis flexibly by substring key match
+    raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("diagnosed with any of the following")
     if isinstance(raw["diagnosis_history"], list):
         raw["diagnosis_history"] = ", ".join(raw["diagnosis_history"])
 
@@ -130,10 +132,10 @@ def normalize_participant_data(raw):
     raw["location"] = f"{raw['city']}, {raw['state']}"
     raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
-    raw["bipolar"] = raw.get("bipolar") or get_any("Have you ever been diagnosed with bipolar disorder?")
-    raw["blood_pressure"] = raw.get("blood_pressure") or get_any("Do you currently have high blood pressure that is not medically managed?")
-    raw["ketamine_use"] = raw.get("ketamine_use") or get_any("Have you used ketamine recreationally?")
-    
+    raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
+    raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
+    raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine recreationally")
+
     if raw.get("gender", "").lower() == "male":
         raw["pregnant"] = "No"
 
