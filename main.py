@@ -249,11 +249,18 @@ async def chat_handler(request: Request):
             return {"reply": "✅ Great! You've been submitted to the River Program. You'll be contacted shortly.\n\nType 'other options' to explore more studies."}
         elif user_input.strip().lower() in ["no", "n", "not interested"]:
             participant_data = river_pending_confirmation.pop(session_id)
+            participant_data["rivers_match"] = False
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
+
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
+
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
+
+            if not other_matches:
+                return {"reply": "Thanks for letting me know. Based on your information, I couldn't find any other strong study matches at the moment. You’re always welcome to check back later — we update our listings regularly."}
+
             return {"reply": format_matches_for_gpt(other_matches)}
         else:
             return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}

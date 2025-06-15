@@ -50,7 +50,7 @@ def push_to_monday(participant_data):
         "text_mkrykwbd": participant_data.get("notes", ""),
         "text_mkryv0aa": participant_data.get("text_opt_in", ""),
         "text_mkryjhq6": participant_data.get("best_time", ""),
-        "text_mkrynnh7": participant_data.get("coordinates", ""),
+        "text_mkrynnh7": str(participant_data.get("coordinates", "")),
         "text_mkrypzht": participant_data.get("bipolar", ""),
         "text_mkrygfm7": participant_data.get("blood_pressure", "")
     }
@@ -58,7 +58,6 @@ def push_to_monday(participant_data):
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
-    # Escape string properly for mutation
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
 
     query = f'''
