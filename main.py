@@ -78,7 +78,7 @@ Start with general mental health questions, then proceed to personal and logisti
 
 ---
 
-💬 After each user reply, say something encouraging like “Thanks for that” or “Got it!” to keep it conversational.
+💬 After each user reply, say something encouraging like “Got it!” or “Appreciate the info.” to keep it conversational.
 ❌ Do NOT summarize or repeat back their answers.
 ✅ Once all answers are collected, return a single JSON object with all fields.
 
@@ -271,7 +271,6 @@ async def chat_handler(request: Request):
                 print("⚠️ Missing fields:", missing_fields)
                 return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
-            # RIVER CHECK FIRST
             if is_eligible_for_river(participant_data):
                 river_pending_confirmation[session_id] = participant_data
                 return {"reply": (
