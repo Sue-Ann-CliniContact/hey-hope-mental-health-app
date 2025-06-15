@@ -23,62 +23,115 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect the following information:
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect the following information to help match them to research studies for mental health.
 
-- Full Name
-- Email Address
-- Phone Number
-- City
-- State
-- ZIP Code
-- Best Time to Reach You
-- Can we contact you via text message?
-- Date of birth (e.g., March 14, 1992)
-- Gender Identity
-- Race / Ethnicity
+Start with general mental health questions, then proceed to personal and logistical questions. If the user is located in California or Montana, is between 21–75 years old, and has depression, anxiety, or PTSD, then include the River Program follow-up section.
+
+---
+
+### 🧠 Mental Health & Diagnosis
+- What brings you here today? (Optional)
+- Do you experience depression, anxiety, PTSD, or any other mental health condition?
+- Have you been officially diagnosed by a healthcare provider?
+- Are you currently receiving any form of treatment or therapy?
+- Are you currently taking any medication for your condition? If so, which ones?
+- Have you ever tried ketamine therapy?
+- How long have you been experiencing these symptoms?
+
+---
+
+### 👤 Personal Details
+- What is your full name?
+- What is your date of birth? (e.g., June 20, 1990)
+- What is your gender identity?
+- Are you currently pregnant or breastfeeding? (only if applicable)
+- What is your race / ethnicity?
 - Are you a U.S. Veteran?
-- Are you Native American or identify as Indigenous?
-- Do you have health insurance?
-- Are you currently receiving any form of mental health care?
-- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other, or None
-- Have you ever tried SSRIs or antidepressants?
+- Do you identify as Native American or Indigenous?
+- What city and state do you live in?
+- What is your ZIP code?
+- What is your current profession or field of work?
+
+---
+
+### 📞 Contact & Participation Preferences
+- What is your email address?
+- What is your phone number?
+- Can we contact you via text message?
+- What is the best time to reach you?
+- Do you prefer in-person or remote participation?
+- Do you have access to a computer, phone, or internet for telehealth?
+- Are you open to participating in brief screening calls?
+- Do you speak a language other than English at home?
+- Are you open to future studies?
+- Is there anything else you’d like us to know?
+
+---
+
+### 🌊 River Program Follow-Up (Ask only if eligible by Age + State + Diagnosis)
+> “Thanks — based on what you’ve shared, you may be eligible for our River Program for ketamine therapy. I’ll ask a few follow-up questions to check your eligibility.”
+
 - Have you ever been diagnosed with bipolar disorder?
 - Do you currently have high blood pressure that is not medically managed?
 - Have you used ketamine recreationally?
-- Are you currently pregnant or breastfeeding? (only if applicable)
-- Are you open to remote or at-home participation options?
-- Are you willing to participate in brief screening calls?
-- Preferred participation format: In-person / Remote / No preference
-- Do you speak a language other than English at home?
-- Are you open to future studies?
-- Anything else you'd like us to know?
+- Are you currently pregnant or breastfeeding? (ask again only if applicable)
 
-💬 Say “Thanks for that!” after each response. Be friendly and conversational.
-❌ Do NOT summarize or repeat back responses.
-✅ Once all information is collected, return ONLY a single JSON object with all fields.
+---
 
-If the user responds unclearly, gently guide them back on track or rephrase the question helpfully. If they provide a confusing answer (e.g., not a date for DOB), clarify and ask again.
+💬 After each user reply, say “Thanks for that!” and ask the next question.
+❌ Do NOT summarize or repeat back their answers.
+✅ Once all answers are collected, return a single JSON object with all fields.
+
+If the user gives an unclear answer, gently rephrase the question and ask again.
+If a response isn’t formatted correctly (e.g. wrong date format), clarify and retry.
 """
 
 chat_histories = {}
 river_pending_confirmation = {}
 last_participant_data = {}
 
+US_STATES = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
+    "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC"
+}
+
+def normalize_state(state_input):
+    s = state_input.strip().lower()
+    return US_STATES.get(s, state_input.upper())
+
+def normalize_phone(phone):
+    digits = re.sub(r"\D", "", phone)
+    if not digits.startswith("1"):
+        digits = "1" + digits
+    return "+" + digits
+
 def calculate_age(dob_str):
     if not dob_str.strip():
         return None
-    try:
-        dob = datetime.strptime(dob_str, "%B %d, %Y")
-        today = datetime.today()
-        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    except Exception as e:
-        print("⚠️ Error parsing date of birth:", dob_str, "→", str(e))
-        return None
-
-def contains_red_flag(text):
-    text = text.lower()
-    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"]
-    return any(flag in text for flag in red_flags)
+    formats = [
+        "%B %d, %Y", "%b %d, %Y", "%m/%d/%Y", "%m/%d/%y", 
+        "%d %B %Y", "%d %b %Y", "%Y-%m-%d", "%d-%m-%Y"
+    ]
+    for fmt in formats:
+        try:
+            dob = datetime.strptime(dob_str.strip(), fmt)
+            today = datetime.today()
+            return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        except ValueError:
+            continue
+    print("⚠️ Unrecognized DOB format:", dob_str)
+    return None
 
 def get_coordinates(city, state, zip_code):
     try:
@@ -104,10 +157,7 @@ def is_eligible_for_river(participant):
         participant.get("ketamine_use", "").strip().lower() != "yes"
     )
 
-# (Same preamble as before: imports, setup...)
-
 def normalize_participant_data(raw):
-    # Lowercase map of keys to originals
     key_map = {k.lower(): k for k in raw}
 
     def get_any(*keys):
@@ -119,11 +169,11 @@ def normalize_participant_data(raw):
 
     raw["dob"] = raw.get("dob") or get_any("date of birth")
     raw["city"] = raw.get("city") or get_any("city")
-    raw["state"] = raw.get("state") or get_any("state")
+    raw["state"] = normalize_state(raw.get("state") or get_any("state"))
     raw["zip"] = raw.get("zip") or get_any("zip code")
     raw["gender"] = raw.get("gender") or get_any("gender identity")
+    raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number", "mobile"))
 
-    # Grab diagnosis flexibly by substring key match
     raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("diagnosed with any of the following")
     if isinstance(raw["diagnosis_history"], list):
         raw["diagnosis_history"] = ", ".join(raw["diagnosis_history"])

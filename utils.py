@@ -14,6 +14,14 @@ def format_matches_for_gpt(matches):
             tag = "Other"
         buckets[tag].append(match)
 
+    def get_confidence_label(score):
+        if score >= 7:
+            return "✅ High Match"
+        elif score >= 4:
+            return "👍 Good Match"
+        else:
+            return "📌 General Match"
+
     def format_group(label, studies):
         if not studies:
             return ""
@@ -26,10 +34,13 @@ def format_matches_for_gpt(matches):
             rationale = match.get("match_rationale") or ""
             eligibility = match.get("eligibility") or ""
             contact = match.get("contacts") or "Not provided"
+            score = match.get("match_confidence", 0)
+            confidence = get_confidence_label(score)
 
             out += (
                 f"\n**{i}. [{title}]({link})**\n"
                 f"📍 **Location**: {locs}\n"
+                f"🏅 **Match Score**: {score}/10  |  {confidence}\n"
                 f"📋 **Summary**: {summary[:300]}{'...' if len(summary) > 300 else ''}\n"
                 f"✅ **Why it matches**: {rationale}\n"
                 f"📄 **Eligibility Highlights**: {eligibility[:250]}{'...' if len(eligibility) > 250 else ''}\n"

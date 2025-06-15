@@ -28,36 +28,37 @@ def push_to_monday(participant_data):
         "text_mkrw88sj": participant_data.get("city", ""),
         "text_mkrwfpm2": participant_data.get("state", ""),
         "text_mkrwbndm": participant_data.get("zip", ""),
-        "text_mkrw5hsj": participant_data.get("best_time", ""),
-        "text_mkrwey0s": participant_data.get("text_opt_in", ""),
         "text_mkrwk3tk": participant_data.get("dob", ""),
         "text_mkrwc5h6": participant_data.get("gender", ""),
         "text_mkrwfv06": participant_data.get("ethnicity", ""),
-        "text_mkrw6ebk": participant_data.get("veteran", ""),
-        "text_mkrwfp9q": participant_data.get("indigenous", ""),
-        "text_mkrw6jhn": participant_data.get("employment", ""),
-        "text_mkrwp4az": participant_data.get("income", ""),
-        "text_mkrw2622": participant_data.get("insurance", ""),
-        "text_mkrw4sz3": participant_data.get("current_mental_care", ""),
-        "text_mkrw1n9t": participant_data.get("diagnosis_history", ""),
-        "text_mkrw293d": participant_data.get("ssri_use", ""),
-        "text_mkrwgytp": participant_data.get("bipolar", ""),
-        "text_mkrwrdv6": participant_data.get("blood_pressure", ""),
-        "text_mkrwcpt": participant_data.get("ketamine_use", ""),
-        "text_mkrwts3h": participant_data.get("pregnant", ""),
-        "text_mkrw3e9t": participant_data.get("remote_ok", ""),
-        "text_mkrwnrrd": participant_data.get("screening_calls_ok", ""),
-        "text_mkrwb4wx": participant_data.get("preferred_format", ""),
-        "text_mkrw26r3": participant_data.get("non_english_home", ""),
-        "text_mkrw250s": participant_data.get("preferred_language", ""),
-        "text_mkrw27j4": participant_data.get("future_studies_opt_in", ""),
-        "text_mkrw4nbt": participant_data.get("notes", "")
+        "text_mkryn17b": participant_data.get("veteran", ""),
+        "text_mkry9wwz": participant_data.get("indigenous", ""),
+        "text_mkryazky": participant_data.get("profession", ""),
+        "text_mkry6v3z": participant_data.get("diagnosis_history", ""),
+        "text_mkrye22a": participant_data.get("diagnosed_by_provider", ""),
+        "text_mkry8f89": participant_data.get("receiving_treatment", ""),
+        "text_mkrybfqx": participant_data.get("medications", ""),
+        "text_mkry7f99": participant_data.get("ketamine_use", ""),
+        "text_mkryj41": participant_data.get("duration_symptoms", ""),
+        "text_mkryn6g7": participant_data.get("pregnant", ""),
+        "text_mkryvdap": participant_data.get("preferred_format", ""),
+        "text_mkry33zt": participant_data.get("remote_ok", ""),
+        "text_mkry5bdd": participant_data.get("screening_calls_ok", ""),
+        "text_mkrydevh": participant_data.get("non_english_home", ""),
+        "text_mkrys3pj": participant_data.get("preferred_language", ""),
+        "text_mkry6nr7": participant_data.get("future_studies_opt_in", ""),
+        "text_mkrykwbd": participant_data.get("notes", ""),
+        "text_mkryv0aa": participant_data.get("text_opt_in", ""),
+        "text_mkryjhq6": participant_data.get("best_time", ""),
+        "text_mkrynnh7": participant_data.get("coordinates", ""),
+        "text_mkrypzht": participant_data.get("bipolar", ""),
+        "text_mkrygfm7": participant_data.get("blood_pressure", "")
     }
 
     if participant_data.get("rivers_match", False):
         column_values["text_mkrxbqdc"] = "Yes"
 
-    # Escape properly
+    # Escape string properly for mutation
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
 
     query = f'''
