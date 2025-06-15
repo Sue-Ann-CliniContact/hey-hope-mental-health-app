@@ -133,6 +133,14 @@ def calculate_age(dob_str):
     print("⚠️ Unrecognized DOB format:", dob_str)
     return None
 
+def contains_red_flag(text):
+    text = text.lower()
+    red_flags = [
+        "kill myself", "end my life", "can’t do this anymore", 
+        "suicidal", "want to die"
+    ]
+    return any(flag in text for flag in red_flags)
+
 def get_coordinates(city, state, zip_code):
     try:
         query = f"{city}, {state} {zip_code}".strip()
