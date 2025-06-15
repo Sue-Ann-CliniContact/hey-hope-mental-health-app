@@ -1,172 +1,154 @@
-import math
 import re
+from geopy.distance import geodesic
 
-def haversine_distance(coord1, coord2):
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-    R = 6371
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
-    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
-    return R * c
+KEY_CONDITIONS = ["depression", "anxiety", "ptsd"]
+CONDITION_EXCLUSIONS = [
+    "cancer", "menopause", "breast", "bone", "liver", "skeletal", "postpartum",
+    "premenstrual", "oncology", "metastases", "carcinoma"
+]
 
-SYNONYMS = {
-    "depression": ["depression", "major depressive disorder", "mdd"],
-    "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
-    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"]
+GENDER_TERMS = {
+    "male": ["male", "man", "men", "masculine"],
+    "female": ["female", "woman", "women", "feminine", "pregnant", "breastfeeding"]
 }
 
-PROFESSION_TERMS = [
-    "healthcare", "nurse", "doctor", "clinician", "first responder", "veteran", "military",
-    "teacher", "educator", "student", "parent", "caregiver"
-]
-
-MEDICATION_TERMS = [
-    "ssri", "antidepressant", "fluoxetine", "prozac", "sertraline", "zoloft",
-    "escitalopram", "lexapro", "bupropion", "wellbutrin", "ketamine"
-]
+PROFESSION_KEYWORDS = {
+    "healthcare": ["nurse", "doctor", "clinician", "paramedic", "first responder"],
+    "veteran": ["veteran", "military", "service member"]
+}
 
 def normalize(text):
-    return re.sub(r"[^\w\s]", "", text.lower()).strip()
+    return text.lower().strip() if isinstance(text, str) else ""
 
-def expand_terms(diagnosis_text):
-    terms = set()
-    for diag in diagnosis_text.split(","):
-        norm = normalize(diag)
-        for key, values in SYNONYMS.items():
-            if norm in values:
-                terms.update(values)
-                break
-        else:
-            terms.add(norm)
-    return terms
+def condition_match(participant_conditions, study_title, study_conditions, eligibility_text):
+    conditions = [normalize(c) for c in participant_conditions]
+    joined = f"{study_title} {' '.join(study_conditions)} {eligibility_text}".lower()
 
-def match_studies(participant, studies, exclude_river=False):
-    matches = []
+    # Must match a declared study condition directly
+    if not any(c in joined for c in conditions):
+        return False
+
+    # Disqualify if study is mainly about an unrelated condition
+    if any(excl in joined for excl in CONDITION_EXCLUSIONS):
+        return False
+
+    return True
+
+def gender_allowed(participant_gender, eligibility_text):
+    if not participant_gender:
+        return True
+    g = normalize(participant_gender)
+    for required_gender, terms in GENDER_TERMS.items():
+        if required_gender != g and any(term in eligibility_text for term in terms):
+            return False
+    return True
+
+def veteran_allowed(is_veteran, eligibility_text):
+    text = eligibility_text.lower()
+    if "veteran" in text or "military" in text:
+        return is_veteran is True or "not a veteran" not in text
+    return True
+
+def extract_distance_miles(coords1, coords2):
+    try:
+        return round(geodesic(coords1, coords2).miles, 1)
+    except:
+        return None
+
+def score_match(participant, study):
+    score = 0
+    rationale = []
+
+    study_title = normalize(study.get("brief_title", ""))
+    study_conditions = [normalize(c) for c in study.get("conditions", [])]
+    eligibility = normalize(study.get("eligibility", ""))
+    gender = normalize(participant.get("gender", ""))
+    veteran = normalize(participant.get("veteran", "no")) == "yes"
     age = participant.get("age")
-    location = participant.get("coordinates")
-    diagnosis = (participant.get("diagnosis_history") or "").lower()
-    expanded_terms = expand_terms(diagnosis)
-    participant_gender = (participant.get("gender") or "").lower()
-    participant_profession = normalize(participant.get("profession", ""))
-    medications = normalize(participant.get("medications", ""))
-    duration = (participant.get("duration_symptoms") or "").lower()
-    race = normalize(participant.get("ethnicity", ""))
-    prefers_remote = "remote" in (participant.get("preferred_format", "") or "").lower()
 
-    for study in studies:
-        title = (study.get("study_title") or "").lower()
-        summary = (study.get("summary") or "")
-        eligibility_text = (study.get("eligibility_text") or "").lower()
-        summary_text = normalize(summary + " " + title)
+    # Condition Match
+    participant_conditions = participant.get("diagnosis_history", "").split(",")
+    participant_conditions = [c.strip().lower() for c in participant_conditions]
+    if not condition_match(participant_conditions, study_title, study_conditions, eligibility):
+        return None  # hard filter
 
-        if exclude_river and "river" in title:
-            continue
+    score += 2
+    rationale.append("Relevant condition match")
 
-        # 🚫 Filter out studies not centered on depression, anxiety, or PTSD
-        condition_focus = any(core in summary_text for core in ["depression", "anxiety", "ptsd"])
-        if not condition_focus:
-            continue
+    # Gender Match
+    if not gender_allowed(gender, eligibility):
+        return None  # hard filter
 
-        # 🚫 Gender exclusion
-        if participant_gender == "male":
-            if any(term in eligibility_text for term in [
-                "female", "pregnant", "breastfeeding", "women only", "mothers"
-            ]):
-                if "river" not in title:
-                    continue
-        if participant_gender == "female":
-            if "male only" in eligibility_text and "river" not in title:
-                continue
+    score += 1
+    rationale.append("Gender allowed")
 
-        # 🚫 Age exclusion
-        age_min = study.get("min_age_years")
-        age_max = study.get("max_age_years")
-        if age is not None:
-            if (age_min and age < age_min) or (age_max and age > age_max):
-                if "river" not in title:
-                    continue
+    # Veteran
+    if not veteran_allowed(veteran, eligibility):
+        return None  # hard filter if veteran required and not matched
 
-        score = 0
-        reasons = []
-
-        # ✅ Mandatory relevance bonus
-        score += 2
-        reasons.append("Relevant condition match")
-
-        # ✅ Age bonus
+    # Age
+    if age is not None:
+        min_age = study.get("min_age")
+        max_age = study.get("max_age")
+        if (min_age and age < min_age) or (max_age and age > max_age):
+            return None  # hard filter
         score += 1
-        reasons.append("Matches your age range")
+        rationale.append("Matches your age range")
 
-        # ✅ Location bonus
-        loc_score = "Other"
-        if location and study.get("coordinates"):
-            dist = haversine_distance(location, study["coordinates"])
-            study["distance_km"] = round(dist, 1)
-            if dist <= 160:
-                loc_score = "Near You"
-                score += 3
-                reasons.append(f"Located near you (~{int(dist)} km)")
-        else:
-            loc_score = "Other"
-
-        # ✅ Remote-compatible
-        if prefers_remote and any(term in summary_text for term in ["telehealth", "remote", "at-home"]):
-            score += 1
-            reasons.append("Study offers remote participation")
-
-        # ✅ Medication relevance
-        if medications:
-            if any(med in summary_text for med in MEDICATION_TERMS):
+    # Location
+    participant_coords = participant.get("coordinates")
+    study_coords = study.get("location_coords")
+    if participant_coords and study_coords:
+        miles = extract_distance_miles(participant_coords, study_coords)
+        if miles is not None:
+            if miles <= 50:
+                score += 2
+                rationale.append(f"Located near you (~{miles} km)")
+            elif miles <= 100:
                 score += 1
-                reasons.append("Mentions relevant medications")
+                rationale.append(f"Study is within ~{miles} km")
 
-        # ✅ Profession relevance
-        if participant_profession:
-            for keyword in PROFESSION_TERMS:
-                if keyword in participant_profession and keyword in summary_text:
-                    score += 1
-                    reasons.append("Profession-relevant study")
-                    break
+    # Remote
+    if participant.get("remote_ok", "").lower() == "yes" and study.get("is_remote"):
+        score += 1
+        rationale.append("Remote option available")
 
-        # ✅ Duration relevance
-        if "year" in duration or "month" in duration:
-            if any(term in summary_text for term in ["chronic", "long term", "persistent"]):
+    # Race / Ethnicity
+    race = normalize(participant.get("Race / Ethnicity", ""))
+    if race and race in eligibility:
+        score += 1
+        rationale.append("Relevant race/ethnicity focus")
+
+    # Medications
+    meds = normalize(participant.get("medications", ""))
+    if meds and meds in eligibility:
+        score += 1
+        rationale.append("Medication match")
+
+    # Profession
+    prof = normalize(participant.get("profession", ""))
+    for label, keywords in PROFESSION_KEYWORDS.items():
+        if label in prof or any(k in prof for k in keywords):
+            if any(k in eligibility for k in keywords):
                 score += 1
-                reasons.append("Symptom duration aligns with study criteria")
+                rationale.append(f"Matches your profession: {label}")
+            break
 
-        # ✅ Race/ethnicity relevance
-        if race and race in eligibility_text:
-            score += 1
-            reasons.append("Study includes your race/ethnicity group")
+    return {
+        "study": study,
+        "score": score,
+        "rationale": rationale
+    }
 
-        # 🚫 Filter out low-confidence matches
-        if score < 3:
+def match_studies(participant, all_studies, exclude_river=False):
+    matches = []
+    for study in all_studies:
+        if exclude_river and "river" in study.get("brief_title", "").lower():
             continue
+        match = score_match(participant, study)
+        if match and match["score"] >= 3:  # only return confident matches
+            matches.append(match)
 
-        contact_parts = []
-        for key in ["contact_name", "contact_email", "contact_phone"]:
-            val = study.get(key)
-            if val:
-                contact_parts.append(val)
-        contact_info = " | ".join(contact_parts) if contact_parts else "Not provided"
-
-        matches.append({
-            "study_title": study.get("study_title"),
-            "summary": summary,
-            "conditions": summary_text,
-            "locations": study.get("location", "Not specified"),
-            "contacts": contact_info,
-            "link": study.get("study_link", ""),
-            "distance_km": study.get("distance_km", None),
-            "match_confidence": score,
-            "match_rationale": "; ".join(reasons),
-            "location_tag": loc_score,
-            "eligibility": study.get("eligibility_text", ""),
-        })
-
-    matches.sort(key=lambda m: m["match_confidence"], reverse=True)
+    # Sort by descending score
+    matches.sort(key=lambda x: x["score"], reverse=True)
     return matches
