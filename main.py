@@ -163,20 +163,13 @@ async def chat_handler(request: Request):
 
             city = participant_data.get("city") or participant_data.get("City", "")
             state = participant_data.get("state") or participant_data.get("State", "")
-            zip_code = participant_data.get("zip") or participant_data.get("ZIP Code", "")
+            zip_code = participant_data.get("zip") or participant_data.get("ZIP Code") or ""
+            participant_data["zip"] = zip_code
+
             participant_data["location"] = f"{city}, {state}"
             participant_data["city"] = city
             participant_data["state"] = state
-            participant_data["zip"] = zip_code
             participant_data["coordinates"] = get_coordinates(city, state, zip_code)
-
-            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
-            participant_data["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
-
-            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
-            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
-            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
-            participant_data["gender"] = next((v for k, v in participant_data.items() if k.lower() == "gender identity"), "")
 
             # Confirm all normalized values are present
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
