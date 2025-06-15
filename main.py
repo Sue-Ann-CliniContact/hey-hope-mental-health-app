@@ -157,21 +157,23 @@ async def chat_handler(request: Request):
         try:
             participant_data = json.loads(match.group())
 
-            dob_value = next((participant_data.get(k) for k in ["dob", "Date of birth"] if participant_data.get(k)), "")
-            participant_data["age"] = calculate_age(dob_value)
-            participant_data["dob"] = dob_value
+            # Normalize key variants from GPT
+            participant_data["dob"] = participant_data.get("dob") or participant_data.get("Date of birth", "")
+            participant_data["city"] = participant_data.get("city") or participant_data.get("City", "")
+            participant_data["state"] = participant_data.get("state") or participant_data.get("State", "")
+            participant_data["zip"] = participant_data.get("zip") or participant_data.get("ZIP Code", "")
+            participant_data["gender"] = participant_data.get("gender") or participant_data.get("Gender Identity", "")
+            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
+            participant_data["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
 
-            city = participant_data.get("city") or participant_data.get("City", "")
-            state = participant_data.get("state") or participant_data.get("State", "")
-            zip_code = participant_data.get("zip") or participant_data.get("ZIP Code") or ""
-            participant_data["zip"] = zip_code
+            participant_data["age"] = calculate_age(participant_data["dob"])
+            participant_data["location"] = f"{participant_data['city']}, {participant_data['state']}"
+            participant_data["coordinates"] = get_coordinates(participant_data["city"], participant_data["state"], participant_data["zip"])
 
-            participant_data["location"] = f"{city}, {state}"
-            participant_data["city"] = city
-            participant_data["state"] = state
-            participant_data["coordinates"] = get_coordinates(city, state, zip_code)
+            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
+            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
+            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
 
-            # Confirm all normalized values are present
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
             missing_fields = [k for k in required_fields if not participant_data.get(k)]
             if missing_fields:
@@ -182,7 +184,6 @@ async def chat_handler(request: Request):
 
             matches = match_studies(participant_data, all_studies)
 
-            # Check for River eligibility
             for m in matches:
                 if "river" in m.get("study_title", "").lower() and is_eligible_for_river(participant_data):
                     river_pending_confirmation[session_id] = participant_data
@@ -199,4 +200,4 @@ async def chat_handler(request: Request):
             print("❌ Exception while processing match:", str(e))
             return {"reply": "We encountered an error processing your info."}
 
-    return {"reply": gpt_message}
+    return {"reply": gpt_message"}
