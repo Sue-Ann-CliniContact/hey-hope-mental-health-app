@@ -56,6 +56,8 @@ SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the us
 💬 Say “Thanks for that!” after each response. Be friendly and conversational.
 ❌ Do NOT summarize or repeat back responses.
 ✅ Once all information is collected, return ONLY a single JSON object with all fields.
+
+If the user responds unclearly, gently guide them back on track or rephrase the question helpfully. If they provide a confusing answer (e.g., not a date for DOB), clarify and ask again.
 """
 
 chat_histories = {}
@@ -101,6 +103,25 @@ def is_eligible_for_river(participant):
         participant.get("blood_pressure", "").strip().lower() not in ["yes", "unsure"] and
         participant.get("ketamine_use", "").strip().lower() != "yes"
     )
+
+def normalize_participant_data(raw):
+    # Flatten and normalize fields
+    raw["dob"] = raw.get("dob") or raw.get("Date of birth", "")
+    raw["city"] = raw.get("city") or raw.get("City", "")
+    raw["state"] = raw.get("state") or raw.get("State", "")
+    raw["zip"] = raw.get("zip") or raw.get("ZIP Code", "")
+    raw["gender"] = raw.get("gender") or raw.get("Gender Identity", "")
+    diagnosis = raw.get("Have you ever been diagnosed with any of the following?")
+    raw["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
+    raw["age"] = calculate_age(raw["dob"])
+    raw["location"] = f"{raw['city']}, {raw['state']}"
+    raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
+    raw["bipolar"] = next((v for k, v in raw.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
+    raw["blood_pressure"] = next((v for k, v in raw.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
+    raw["ketamine_use"] = next((v for k, v in raw.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
+    if raw.get("gender", "").lower() == "male":
+        raw["pregnant"] = "No"
+    return raw
 
 @app.post("/chat")
 async def chat_handler(request: Request):
@@ -158,44 +179,31 @@ async def chat_handler(request: Request):
             raw_json = match.group()
             print("🔍 Raw JSON extracted:", raw_json)
 
-            participant_data = json.loads(raw_json)
+            participant_data = normalize_participant_data(json.loads(raw_json))
 
-            # Normalize keys
-            participant_data["dob"] = participant_data.get("dob") or participant_data.get("Date of birth", "")
-            participant_data["city"] = participant_data.get("city") or participant_data.get("City", "")
-            participant_data["state"] = participant_data.get("state") or participant_data.get("State", "")
-            participant_data["zip"] = participant_data.get("zip") or participant_data.get("ZIP Code", "")
-            participant_data["gender"] = participant_data.get("gender") or participant_data.get("Gender Identity", "")
-            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
-            participant_data["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
-
-            participant_data["age"] = calculate_age(participant_data["dob"])
-            participant_data["location"] = f"{participant_data['city']}, {participant_data['state']}"
-            participant_data["coordinates"] = get_coordinates(participant_data["city"], participant_data["state"], participant_data["zip"])
-
-            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
-            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
-            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
-
-            # Final field check
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
             missing_fields = [k for k in required_fields if not participant_data.get(k)]
             if missing_fields:
                 print("⚠️ Missing fields:", missing_fields)
                 return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
+            # RIVER CHECK FIRST
+            if is_eligible_for_river(participant_data):
+                river_pending_confirmation[session_id] = participant_data
+                return {"reply": (
+                    "🌊 You've been matched to our **River Program** for at-home ketamine therapy via telehealth, designed for individuals with depression, PTSD, or anxiety.\n\n"
+                    "Would you like to apply now? (Yes or No)"
+                )}
+
             with open("indexed_studies_with_coords.json", "r") as f:
                 all_studies = json.load(f)
 
             matches = match_studies(participant_data, all_studies)
 
-            for m in matches:
-                if "river" in m.get("study_title", "").lower() and is_eligible_for_river(participant_data):
-                    river_pending_confirmation[session_id] = participant_data
-                    return {"reply": (
-                        "🌊 You've been matched to our **River Program** for affordable at-home ketamine therapy with telehealth support.\n\n"
-                        "Would you like to apply now?"
-                    )}
+            if not matches:
+                last_participant_data[session_id] = participant_data
+                push_to_monday(participant_data)
+                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
 
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
