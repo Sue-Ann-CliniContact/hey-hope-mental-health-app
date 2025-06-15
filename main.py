@@ -78,7 +78,7 @@ Start with general mental health questions, then proceed to personal and logisti
 
 ---
 
-💬 After each user reply, say “Thanks for that!” and ask the next question.
+💬 After each user reply, say something encouraging like “Thanks for that” or “Got it!” to keep it conversational.
 ❌ Do NOT summarize or repeat back their answers.
 ✅ Once all answers are collected, return a single JSON object with all fields.
 
@@ -135,10 +135,7 @@ def calculate_age(dob_str):
 
 def contains_red_flag(text):
     text = text.lower()
-    red_flags = [
-        "kill myself", "end my life", "can’t do this anymore", 
-        "suicidal", "want to die"
-    ]
+    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"]
     return any(flag in text for flag in red_flags)
 
 def get_coordinates(city, state, zip_code):
@@ -165,6 +162,16 @@ def is_eligible_for_river(participant):
         participant.get("ketamine_use", "").strip().lower() != "yes"
     )
 
+def flatten_dict(d, parent_key='', sep=' - '):
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
+
 def normalize_participant_data(raw):
     key_map = {k.lower(): k for k in raw}
 
@@ -182,7 +189,7 @@ def normalize_participant_data(raw):
     raw["gender"] = raw.get("gender") or get_any("gender identity")
     raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number", "mobile"))
 
-    raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("diagnosed with any of the following")
+    raw["diagnosis_history"] = raw.get("diagnosis_history") or get_any("diagnosed with any of the following", "mental health conditions")
     if isinstance(raw["diagnosis_history"], list):
         raw["diagnosis_history"] = ", ".join(raw["diagnosis_history"])
 
@@ -255,7 +262,8 @@ async def chat_handler(request: Request):
             raw_json = match.group()
             print("🔍 Raw JSON extracted:", raw_json)
 
-            participant_data = normalize_participant_data(json.loads(raw_json))
+            flattened_raw = flatten_dict(json.loads(raw_json))
+            participant_data = normalize_participant_data(flattened_raw)
 
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
             missing_fields = [k for k in required_fields if not participant_data.get(k)]
