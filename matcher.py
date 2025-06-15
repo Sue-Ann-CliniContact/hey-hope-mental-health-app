@@ -66,41 +66,43 @@ def match_studies(participant, studies, exclude_river=False):
         if exclude_river and "river" in title:
             continue
 
-        # 🚫 Exclude if gender incompatible (unless River)
+        # 🚫 Filter out studies not centered on depression, anxiety, or PTSD
+        condition_focus = any(core in summary_text for core in ["depression", "anxiety", "ptsd"])
+        if not condition_focus:
+            continue
+
+        # 🚫 Gender exclusion
         if participant_gender == "male":
             if any(term in eligibility_text for term in [
-                "pregnant women", "pregnancy", "currently pregnant", "women aged",
-                "female only", "females only", "breastfeeding women", "mothers"
+                "female", "pregnant", "breastfeeding", "women only", "mothers"
             ]):
                 if "river" not in title:
                     continue
-
-        # 🚫 Require diagnosis match
-        if not any(term in summary_text for term in expanded_terms):
-            if "river" not in title:
+        if participant_gender == "female":
+            if "male only" in eligibility_text and "river" not in title:
                 continue
 
-        # 🚫 Require age eligibility
+        # 🚫 Age exclusion
         age_min = study.get("min_age_years")
         age_max = study.get("max_age_years")
-        if age is not None and (age_min is not None or age_max is not None):
-            if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
+        if age is not None:
+            if (age_min and age < age_min) or (age_max and age > age_max):
                 if "river" not in title:
                     continue
 
         score = 0
         reasons = []
 
-        # ✅ Add age match bonus
-        score += 1
-        reasons.append("Matches your age range")
-
-        # ✅ Condition match bonus
+        # ✅ Mandatory relevance bonus
         score += 2
         reasons.append("Relevant condition match")
 
-        # ✅ Location scoring
-        loc_score = "Unknown"
+        # ✅ Age bonus
+        score += 1
+        reasons.append("Matches your age range")
+
+        # ✅ Location bonus
+        loc_score = "Other"
         if location and study.get("coordinates"):
             dist = haversine_distance(location, study["coordinates"])
             study["distance_km"] = round(dist, 1)
@@ -108,23 +110,21 @@ def match_studies(participant, studies, exclude_river=False):
                 loc_score = "Near You"
                 score += 3
                 reasons.append(f"Located near you (~{int(dist)} km)")
-            else:
-                loc_score = "Other"
         else:
             loc_score = "Other"
 
-        # ✅ Remote-friendly bonus
+        # ✅ Remote-compatible
         if prefers_remote and any(term in summary_text for term in ["telehealth", "remote", "at-home"]):
             score += 1
             reasons.append("Study offers remote participation")
 
-        # ✅ Medication keyword match
+        # ✅ Medication relevance
         if medications:
             if any(med in summary_text for med in MEDICATION_TERMS):
                 score += 1
                 reasons.append("Mentions relevant medications")
 
-        # ✅ Profession keyword match
+        # ✅ Profession relevance
         if participant_profession:
             for keyword in PROFESSION_TERMS:
                 if keyword in participant_profession and keyword in summary_text:
@@ -132,18 +132,18 @@ def match_studies(participant, studies, exclude_river=False):
                     reasons.append("Profession-relevant study")
                     break
 
-        # ✅ Duration + chronic match
+        # ✅ Duration relevance
         if "year" in duration or "month" in duration:
             if any(term in summary_text for term in ["chronic", "long term", "persistent"]):
                 score += 1
                 reasons.append("Symptom duration aligns with study criteria")
 
-        # ✅ Race relevance
+        # ✅ Race/ethnicity relevance
         if race and race in eligibility_text:
             score += 1
             reasons.append("Study includes your race/ethnicity group")
 
-        # 🚫 Filter out studies scoring below 3
+        # 🚫 Filter out low-confidence matches
         if score < 3:
             continue
 
