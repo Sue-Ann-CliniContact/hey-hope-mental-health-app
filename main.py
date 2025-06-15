@@ -200,4 +200,4 @@ async def chat_handler(request: Request):
             print("❌ Exception while processing match:", str(e))
             return {"reply": "We encountered an error processing your info."}
 
-    return {"reply": gpt_message"}
+    return {"reply": gpt_message}
