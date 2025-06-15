@@ -1,106 +1,4 @@
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, Request
-import openai
-import os
-import json
-import re
-from matcher import match_studies
-from utils import format_matches_for_gpt
-from push_to_monday import push_to_monday
-from datetime import datetime
-from geopy.geocoders import GoogleV3
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
-
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect the following information:
-
-- Full Name
-- Email Address
-- Phone Number
-- City
-- State
-- ZIP Code
-- Best Time to Reach You
-- Can we contact you via text message?
-- Date of birth (e.g., March 14, 1992)
-- Gender Identity
-- Race / Ethnicity
-- Are you a U.S. Veteran?
-- Are you Native American or identify as Indigenous?
-- Do you have health insurance?
-- Are you currently receiving any form of mental health care?
-- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other, or None
-- Have you ever tried SSRIs or antidepressants?
-- Have you ever been diagnosed with bipolar disorder?
-- Do you currently have high blood pressure that is not medically managed?
-- Have you used ketamine recreationally?
-- Are you currently pregnant or breastfeeding? (only if applicable)
-- Are you open to remote or at-home participation options?
-- Are you willing to participate in brief screening calls?
-- Preferred participation format: In-person / Remote / No preference
-- Do you speak a language other than English at home?
-- Are you open to future studies?
-- Anything else you'd like us to know?
-
-💬 Say “Thanks for that!” after each response. Be friendly and conversational.
-❌ Do NOT summarize or repeat back responses.
-✅ Once all information is collected, return ONLY a single JSON object with all fields.
-"""
-
-chat_histories = {}
-river_pending_confirmation = {}
-last_participant_data = {}
-
-def calculate_age(dob_str):
-    if not dob_str.strip():
-        return None
-    try:
-        dob = datetime.strptime(dob_str, "%B %d, %Y")
-        today = datetime.today()
-        return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-    except Exception as e:
-        print("⚠️ Error parsing date of birth:", dob_str, "→", str(e))
-        return None
-
-def contains_red_flag(text):
-    text = text.lower()
-    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"]
-    return any(flag in text for flag in red_flags)
-
-def get_coordinates(city, state, zip_code):
-    try:
-        query = f"{city}, {state} {zip_code}".strip()
-        loc = geolocator.geocode(query)
-        if loc:
-            return (loc.latitude, loc.longitude)
-    except Exception as e:
-        print("⚠️ Failed to geocode location:", query, "→", str(e))
-    return None
-
-def is_eligible_for_river(participant):
-    age = participant.get("age")
-    state = participant.get("state", "").strip().upper()
-    diagnosis = (participant.get("diagnosis_history") or "").lower()
-    
-    return (
-        age is not None and 21 <= age <= 75 and
-        state in ["CA", "MT"] and
-        any(cond in diagnosis for cond in ["depression", "anxiety", "ptsd"]) and
-        participant.get("bipolar", "").strip().lower() == "no" and
-        participant.get("blood_pressure", "").strip().lower() not in ["yes", "unsure"] and
-        participant.get("ketamine_use", "").strip().lower() != "yes"
-    )
+# ... (imports and setup remain unchanged) ...
 
 @app.post("/chat")
 async def chat_handler(request: Request):
@@ -152,12 +50,16 @@ async def chat_handler(request: Request):
     gpt_message = response.choices[0].message["content"]
     chat_histories[session_id].append({"role": "assistant", "content": gpt_message})
 
+    # Extract JSON from GPT output
     match = re.search(r'{[\s\S]*}', gpt_message)
     if match:
         try:
-            participant_data = json.loads(match.group())
+            raw_json = match.group()
+            print("🔍 Raw JSON extracted:", raw_json)
 
-            # Normalize key variants from GPT
+            participant_data = json.loads(raw_json)
+
+            # Normalize keys
             participant_data["dob"] = participant_data.get("dob") or participant_data.get("Date of birth", "")
             participant_data["city"] = participant_data.get("city") or participant_data.get("City", "")
             participant_data["state"] = participant_data.get("state") or participant_data.get("State", "")
@@ -174,9 +76,11 @@ async def chat_handler(request: Request):
             participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
             participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
 
+            # Final field check
             required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
             missing_fields = [k for k in required_fields if not participant_data.get(k)]
             if missing_fields:
+                print("⚠️ Missing fields:", missing_fields)
                 return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
             with open("indexed_studies_with_coords.json", "r") as f:
@@ -197,7 +101,8 @@ async def chat_handler(request: Request):
             return {"reply": format_matches_for_gpt(matches)}
 
         except Exception as e:
-            print("❌ Exception while processing match:", str(e))
-            return {"reply": "We encountered an error processing your info."}
+            print("❌ Exception while processing GPT match JSON:", str(e))
+            print("📨 GPT message was:", gpt_message)
+            return {"reply": "We encountered an error processing your info. Please try again or contact support."}
 
     return {"reply": gpt_message}
