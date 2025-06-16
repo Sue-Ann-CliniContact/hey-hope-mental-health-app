@@ -8,8 +8,12 @@ def get_location_coords(zip_code):
 def normalize(text):
     return text.lower().strip() if isinstance(text, str) else text
 
-def extract_condition_tags(participant):
-    conds = participant.get("Conditions", [])
+def extract_condition_tags(mental_section):
+    if isinstance(mental_section, dict):
+        conds = mental_section.get("Conditions", [])
+    else:
+        conds = []
+
     if isinstance(conds, list):
         return [normalize(c) for c in conds]
     elif isinstance(conds, str):
@@ -58,29 +62,39 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
     location = pd.get("ZIP code") or pd.get("ZIP Code") or pd.get("zip")
     coords = get_location_coords(location)
-    age = age_from_dob(pd.get("Date of birth"))
-    gender = normalize(pd.get("Gender identity"))
-    main_conditions = extract_condition_tags(pd.get("Mental Health & Diagnosis", {}))
+    dob = pd.get("Date of birth") or pd.get("dob")
+    age = age_from_dob(dob)
+    gender = normalize(pd.get("Gender identity") or pd.get("gender"))
+    mental = pd.get("Mental Health & Diagnosis", {})
+
+    main_conditions = extract_condition_tags(mental)
     participant_tags = set(main_conditions)
 
-    # Add key flags to help matching
+    # Add standard flags
     if gender:
         participant_tags.add(gender)
     if pd.get("Pregnant or Breastfeeding") is True or pd.get("Pregnant or breastfeeding (Follow-Up)") is True:
         participant_tags.add("pregnant")
+    if pd.get("bipolar", "").strip().lower() == "yes":
+        participant_tags.add("bipolar")
+    if pd.get("blood_pressure", "").strip().lower() in ["yes", "unsure"]:
+        participant_tags.add("blood_pressure")
+    if pd.get("ketamine_use", "").strip().lower() == "yes":
+        participant_tags.add("ketamine_use")
+    if pd.get("U.S. Veteran", "").strip().lower() == "yes":
+        participant_tags.add("veteran")
 
     eligible_studies = []
     for study in all_studies:
-        if exclude_river and "require_depression" in study.get("tags", []) and "River" in study.get("study_title", ""):
+        tags = study.get("tags", [])
+
+        if exclude_river and "require_depression" in tags and "River" in study.get("study_title", ""):
             continue
 
         if passes_basic_filters(study, participant_tags, age, gender, coords):
-            score = 5  # default
+            score = 5
             reasons = []
 
-            tags = study.get("tags", [])
-
-            # Handle inclusion/exclusion logic
             for tag in tags:
                 if tag.startswith("exclude_") and tag[8:] in participant_tags:
                     reasons.append(f"❌ Excluded due to: {tag[8:]}")
@@ -98,9 +112,23 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                 "match_reason": reasons
             })
 
-    # River priority
+    # River program prioritization
     for e in eligible_studies:
         if "River" in e["study"].get("study_title", ""):
             e["match_score"] += 2
             e["match_reason"].append("🌊 Prioritized River Program")
-    return sorted(eligible_studies, key=lambda x: x["match_score"], reverse=True)[:20]
+
+    # Final sorting
+    sorted_matches = sorted(eligible_studies, key=lambda x: x["match_score"], reverse=True)[:20]
+
+    # Inject matched_tags and matched_studies into participant_data
+    matched_tags = set()
+    matched_titles = []
+    for match in sorted_matches:
+        matched_tags.update(match["study"].get("tags", []))
+        matched_titles.append(match["study"].get("study_title", "Untitled Study"))
+
+    participant_data["matched_tags"] = sorted(matched_tags)
+    participant_data["matched_studies"] = matched_titles
+
+    return sorted_matches

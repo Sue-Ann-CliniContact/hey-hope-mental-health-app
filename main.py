@@ -23,29 +23,35 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect just enough information to match them with potential mental health studies.
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Start by asking one question at a time to collect just enough information to match the user with mental health studies.
 
-First collect the following:
+First, collect:
+- Name
+- Email
+- Phone number
+- Date of birth
+- Gender
+- ZIP code
+- Their main mental health concern(s) like depression, anxiety, or PTSD
 
-- Basic contact info (name, email, phone)
-- Date of birth, gender, ZIP code
-- Main mental health concern(s) (e.g., anxiety, depression, PTSD)
+Once these are collected, perform initial matching using:
+- Age
+- Location
+- Gender
+- Main condition(s)
 
-Then begin initial matching using age, location, gender, and condition.
+Return a broad list of studies (10–20), including the River Program if eligible.
 
-Return a broad list of 10–20 studies that may be relevant, including River Program if eligible. If more information is needed (e.g. bipolar, substance use, pregnancy, cancer, etc.) to confirm matches, ask focused follow-up questions *after* presenting the initial list.
+Then, ask smart follow-up questions (e.g. about bipolar, pregnancy, cancer, etc.) based on what's needed to confirm matches from that list. Never ask all questions upfront.
 
-Never ask all questions up front. Adapt dynamically based on the studies being considered.
+Once enough information is gathered, return a structured JSON object of their info.
 
-Always return a single JSON object once enough info is gathered.
+After each user reply, say “Got it!” or “Thanks!” to keep it conversational. Do not summarize their answers or repeat them back.
 
-Do not summarize answers. Say things like “Got it!” or “Thanks!” after each reply to keep it conversational.
-
-Follow-up logic:
-- If a study requires female participants and gender is not yet known, ask.
-- If a study excludes bipolar disorder and we don’t yet know, ask.
-- If the River Program is relevant, ask River follow-ups.
-
+Follow-up rules:
+- Ask about bipolar only if a study excludes it.
+- Ask about gender-specific requirements only if needed.
+- If eligible, ask River Program follow-ups.
 """
 
 chat_histories = {}
@@ -97,8 +103,7 @@ def calculate_age(dob_str):
 
 def contains_red_flag(text):
     text = text.lower()
-    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"
-    ]
+    red_flags = ["kill myself", "end my life", "can’t do this anymore", "suicidal", "want to die"]
     return any(flag in text for flag in red_flags)
 
 def get_coordinates(city, state, zip_code):
@@ -115,7 +120,7 @@ def is_eligible_for_river(participant):
     age = participant.get("age")
     state = participant.get("state", "").strip().upper()
     diagnosis = (participant.get("diagnosis_history") or "").lower()
-    
+
     return (
         age is not None and 21 <= age <= 75 and
         state in ["CA", "MT"] and
@@ -135,8 +140,6 @@ def flatten_dict(d, parent_key='', sep=' - '):
             items[new_key] = v
     return items
 
-# ... [imports and setup above this remain unchanged]
-
 def normalize_participant_data(raw):
     key_map = {k.lower(): k for k in raw}
 
@@ -147,13 +150,11 @@ def normalize_participant_data(raw):
                 return match
         return ""
 
-    # Core identity and contact
     raw["dob"] = raw.get("dob") or get_any("date of birth")
     raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
     raw["gender"] = raw.get("gender") or get_any("gender identity")
     raw["zip"] = raw.get("zip") or get_any("zip code")
 
-    # 📍 Location splitting
     loc = raw.get("location") or get_any("location")
     if loc and "," in loc:
         parts = [p.strip() for p in loc.split(",")]
@@ -163,19 +164,16 @@ def normalize_participant_data(raw):
         raw["city"] = raw.get("city") or get_any("city")
         raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
-    # 🧠 Conditions
     conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
     if isinstance(conds, list):
         raw["diagnosis_history"] = ", ".join(conds)
     else:
         raw["diagnosis_history"] = conds
 
-    # 👤 Derived and special fields
     raw["age"] = calculate_age(raw["dob"])
     raw["location"] = f"{raw['city']}, {raw['state']}"
     raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
-    # ✅ River-related logic
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
     raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine therapy", "ketamine use")
