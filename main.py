@@ -244,7 +244,7 @@ async def chat_handler(request: Request):
 
     match = re.search(r'{[\s\S]*}', gpt_message)
     if match:
-    try:
+        try:
         raw_json = match.group()
         print("🔍 Raw JSON extracted:", raw_json)
 
@@ -257,7 +257,7 @@ async def chat_handler(request: Request):
             print("⚠️ Missing fields:", missing_fields)
             return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
 
-        # ✅ RIVER FIRST, THEN GENERAL MATCHING
+        # ✅ River check BEFORE study matching
         if session_id not in river_pending_confirmation and is_eligible_for_river(participant_data):
             river_pending_confirmation[session_id] = participant_data
             return {"reply": (
