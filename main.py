@@ -196,7 +196,7 @@ async def chat_handler(request: Request):
 
     if user_input.strip().lower() in ["other options", "other studies", "more studies"]:
         if session_id in last_participant_data:
-            with open("indexed_studies_with_coords.json", "r") as f:
+            with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
                 all_studies = json.load(f)
             other_matches = match_studies(last_participant_data[session_id], all_studies, exclude_river=True)
             return {"reply": format_matches_for_gpt(other_matches)}
@@ -216,7 +216,7 @@ async def chat_handler(request: Request):
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
 
-            with open("indexed_studies_with_coords.json", "r") as f:
+            with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
                 all_studies = json.load(f)
 
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
@@ -264,7 +264,7 @@ async def chat_handler(request: Request):
                     "Would you like to apply now? (Yes or No)"
                 )}
 
-            with open("indexed_studies_with_coords.json", "r") as f:
+            with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
                 all_studies = json.load(f)
 
             matches = match_studies(participant_data, all_studies)
