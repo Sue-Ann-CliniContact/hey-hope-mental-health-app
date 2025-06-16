@@ -244,7 +244,7 @@ async def chat_handler(request: Request):
 
     match = re.search(r'{[\s\S]*}', gpt_message)
     if match:
-        try:
+    try:
         raw_json = match.group()
         print("🔍 Raw JSON extracted:", raw_json)
 
