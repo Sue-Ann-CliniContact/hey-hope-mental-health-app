@@ -164,6 +164,17 @@ def normalize_participant_data(raw):
         raw["city"] = raw.get("city") or get_any("city")
         raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
+        # If city/state still missing but zip is available, enrich via geolocator
+        if (not raw["city"] or not raw["state"]) and raw.get("zip"):
+            try:
+                loc = geolocator.geocode(raw["zip"])
+                if loc and hasattr(loc, 'raw'):
+                    address = loc.raw.get("address", {})
+                    raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village")
+                    raw["state"] = raw["state"] or normalize_state(address.get("state", ""))
+            except Exception as e:
+                print("⚠️ ZIP enrichment failed:", e)
+
     conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
     if isinstance(conds, list):
         raw["diagnosis_history"] = ", ".join(conds)
@@ -258,14 +269,34 @@ async def chat_handler(request: Request):
             missing_fields = [k for k in required_fields if not participant_data.get(k)]
             if missing_fields:
                 print("⚠️ Missing fields:", missing_fields)
-                return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
+                return {
+                    "reply": (
+                        "Thanks! I’ve saved your info so far. To match you to studies, I still need a few more details:\n\n" +
+                        "- " + "\n- ".join(missing_fields).replace("_", " ").title()
+                    )
+                }           
 
             if session_id not in river_pending_confirmation and is_eligible_for_river(participant_data):
                 river_pending_confirmation[session_id] = participant_data
                 return {"reply": (
                     "🌊 You've been matched to our **River Program** for at-home ketamine therapy via telehealth, designed for individuals with depression, PTSD, or anxiety.\n\n"
-                    "Would you like to apply now? (Yes or No)"
+                    "**Would you like to apply now? (Yes or No)**"
                 )}
+
+# ✅ River confirmation response (outside the above block)
+            if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
+                river_qs = [
+                    "Are you currently receiving any treatment for your mental health conditions?",
+                    "Have you ever participated in a clinical trial before?",
+                    "Are you comfortable with regular check-ups and follow-ups as part of the study?"
+                ]
+                del river_pending_confirmation[session_id]
+                return {
+                    "reply": (
+                        "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
+                        "\n- ".join(river_qs)
+                    )
+                }
 
             with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
                 all_studies = json.load(f)

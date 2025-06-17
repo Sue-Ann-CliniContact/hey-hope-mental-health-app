@@ -23,13 +23,18 @@ def format_matches_for_gpt(matches):
             return "📌 Possible Match"
 
     def classify_location(coords):
-        if not coords:
-            return "Other"
+        # Assume near LA unless future dynamic center added
+        center = (33.9697897, -118.2468148)
         try:
-            distance = geodesic(coords, (33.9697897, -118.2468148)).miles
-            return "Near You" if distance <= 100 else "National"
+            if coords:
+                distance = geodesic(coords, center).miles
+                if distance <= 100:
+                    return "Near You"
+                elif distance <= 1500:
+                    return "National"
         except:
-            return "Other"
+            pass
+        return "Other"
 
     # Grouping logic
     grouped = {
@@ -66,13 +71,13 @@ def format_matches_for_gpt(matches):
 
     def format_group(label, studies):
         if not studies:
-            return ""
+            return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
         out = f"\n\n### 🏷️ {label} Studies\n"
         studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
-        for i, s in enumerate(studies[:5], 1):
+        for i, s in enumerate(studies[:10], 1):
             confidence = get_confidence_label(s["match_confidence"])
-            summary = s["summary"][:300] + ("..." if len(s["summary"]) > 300 else "")
-            eligibility = s["eligibility"][:250] + ("..." if len(s["eligibility"]) > 250 else "")
+            summary = (s["summary"] or "Not provided")[:300] + ("..." if s["summary"] and len(s["summary"]) > 300 else "")
+            eligibility = (s["eligibility"] or "Not specified")[:250] + ("..." if s["eligibility"] and len(s["eligibility"]) > 250 else "")
 
             highlights = ""
             if s["matched_includes"]:
@@ -82,8 +87,11 @@ def format_matches_for_gpt(matches):
             if s["excluded_flags"]:
                 highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
 
+            is_river = "river" in s['study_title'].lower()
+            river_label = " 🌊 **[River Program]**" if is_river else ""
+
             out += (
-                f"\n**{i}. [{s['study_title']}]({s['link']})**\n"
+                f"\n**{i}. [{s['study_title']}]({s['link']}){river_label}**\n"
                 f"📍 **Location**: {s['locations']}\n"
                 f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
                 f"📜 **Summary**: {summary}\n"

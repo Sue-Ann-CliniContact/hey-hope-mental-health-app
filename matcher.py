@@ -1,8 +1,17 @@
 # === UPDATED matcher.py (only adjusted filtering logic) ===
 from geopy.distance import geodesic
 
+from geopy.geocoders import GoogleV3
+geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
+
 def get_location_coords(zip_code):
-    return (33.9697897, -118.2468148) if zip_code == "90001" else None
+    try:
+        loc = geolocator.geocode(zip_code)
+        if loc:
+            return (loc.latitude, loc.longitude)
+    except Exception as e:
+        print("⚠️ Geocode failed for ZIP:", zip_code, "→", str(e))
+    return None
 
 def normalize(text):
     return text.lower().strip() if isinstance(text, str) else text
@@ -52,7 +61,7 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
 def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
     location = pd.get("ZIP code") or pd.get("ZIP Code") or pd.get("zip")
-    coords = get_location_coords(location)
+    coords = pd.get("coordinates") or get_location_coords(location)
     dob = pd.get("Date of birth") or pd.get("dob")
     age = age_from_dob(dob)
     gender = normalize(pd.get("Gender identity") or pd.get("gender"))
@@ -110,7 +119,13 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             e["match_score"] += 2
             e["match_reason"].append("🌊 Prioritized River Program")
 
-    sorted_matches = sorted(eligible_studies, key=lambda x: x["match_score"], reverse=True)[:20]
+    sorted_matches = sorted(
+        eligible_studies,
+        key=lambda x: (
+            -x["match_score"],  # high score first
+            "River" not in x["study"].get("study_title", "")  # River = True gets priority
+        )
+    )[:20]
 
     matched_tags = set()
     matched_titles = []
