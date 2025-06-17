@@ -302,6 +302,9 @@ async def chat_handler(request: Request):
                 all_studies = json.load(f)
 
             matches = match_studies(participant_data, all_studies)
+            return {
+                "reply": format_matches_for_gpt(matches)
+            }
 
             if not matches:
                 last_participant_data[session_id] = participant_data
