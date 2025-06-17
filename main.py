@@ -306,17 +306,21 @@ async def chat_handler(request: Request):
                 "reply": format_matches_for_gpt(matches)
             }
 
-            if not matches:
+           if not matches:
                 last_participant_data[session_id] = participant_data
                 push_to_monday(participant_data)
-                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
+                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved."}
+
+            # ✅ TEMPORARY override to confirm match list structure
+            reply_text = format_matches_for_gpt(matches)
+            print("✅ FORMATTED MATCHES:\n", reply_text)
 
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
             study_selection_stage[session_id] = {"matches": matches}
             return {
-                "reply": format_matches_for_gpt(matches) +
-                          "\n\n🔍 Let me know which of these you’d like to explore further. Just list the number(s) or study name(s), and I’ll ask you a few quick questions to confirm eligibility."
+                "reply": reply_text +
+                        "\n\n🔍 Let me know which of these you'd like to explore. Just type the number or name."
             }
 
         except Exception as e:
