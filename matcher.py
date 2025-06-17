@@ -1,8 +1,7 @@
-import re
+# === UPDATED matcher.py (only adjusted filtering logic) ===
 from geopy.distance import geodesic
 
 def get_location_coords(zip_code):
-    # Placeholder - replace with actual geocoding
     return (33.9697897, -118.2468148) if zip_code == "90001" else None
 
 def normalize(text):
@@ -13,7 +12,6 @@ def extract_condition_tags(mental_section):
         conds = mental_section.get("Conditions", [])
     else:
         conds = []
-
     if isinstance(conds, list):
         return [normalize(c) for c in conds]
     elif isinstance(conds, str):
@@ -32,7 +30,6 @@ def age_from_dob(dob_str):
 def passes_basic_filters(study, participant_tags, age, gender, coords):
     tags = study.get("tags", [])
 
-    # Age
     if study.get("min_age_years") and age is not None:
         if age < study["min_age_years"]:
             return False
@@ -40,21 +37,15 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
         if age > study["max_age_years"]:
             return False
 
-    # Gender
     if "exclude_female" in tags and gender == "female":
         return False
     if "exclude_male" in tags and gender == "male":
         return False
 
-    # Location
     if coords and study.get("coordinates"):
         distance = geodesic(coords, study["coordinates"]).miles
-        if distance > 100:  # Optional: filter or deprioritize later
+        if distance > 100:
             return False
-
-    # Main condition tag must match at least one
-    if not any(pt in tags for pt in participant_tags):
-        return False
 
     return True
 
@@ -70,7 +61,6 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     main_conditions = extract_condition_tags(mental)
     participant_tags = set(main_conditions)
 
-    # Add standard flags
     if gender:
         participant_tags.add(gender)
     if pd.get("Pregnant or Breastfeeding") is True or pd.get("Pregnant or breastfeeding (Follow-Up)") is True:
@@ -87,13 +77,16 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     eligible_studies = []
     for study in all_studies:
         tags = study.get("tags", [])
-
         if exclude_river and "require_depression" in tags and "River" in study.get("study_title", ""):
             continue
 
         if passes_basic_filters(study, participant_tags, age, gender, coords):
             score = 5
             reasons = []
+
+            if not any(pt in tags for pt in participant_tags):
+                score -= 3
+                reasons.append("⚠️ Main condition may not match")
 
             for tag in tags:
                 if tag.startswith("exclude_") and tag[8:] in participant_tags:
@@ -112,16 +105,13 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                 "match_reason": reasons
             })
 
-    # River program prioritization
     for e in eligible_studies:
         if "River" in e["study"].get("study_title", ""):
             e["match_score"] += 2
             e["match_reason"].append("🌊 Prioritized River Program")
 
-    # Final sorting
     sorted_matches = sorted(eligible_studies, key=lambda x: x["match_score"], reverse=True)[:20]
 
-    # Inject matched_tags and matched_studies into participant_data
     matched_tags = set()
     matched_titles = []
     for match in sorted_matches:
