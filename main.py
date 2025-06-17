@@ -244,7 +244,6 @@ async def chat_handler(request: Request):
 
     if session_id not in chat_histories:
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
     chat_histories[session_id].append({"role": "user", "content": user_input})
 
     response = openai.ChatCompletion.create(
@@ -257,75 +256,74 @@ async def chat_handler(request: Request):
     chat_histories[session_id].append({"role": "assistant", "content": gpt_message})
 
     match = re.search(r'{[\s\S]*}', gpt_message)
-    if match:
-        try:
-            raw_json = match.group()
-            print("🔍 Raw JSON extracted:", raw_json)
+    if not match:
+        return {"reply": gpt_message if isinstance(gpt_message, str) else "Sorry, I couldn’t generate a response. Please try again."}
 
-            flattened_raw = flatten_dict(json.loads(raw_json))
-            participant_data = normalize_participant_data(flattened_raw)
+    try:
+        raw_json = match.group()
+        print("🔍 Raw JSON extracted:", raw_json)
 
-            required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
-            missing_fields = [k for k in required_fields if not participant_data.get(k)]
-            if missing_fields:
-                print("⚠️ Missing fields:", missing_fields)
-                return {
-                    "reply": (
-                        "Thanks! I’ve saved your info so far. To match you to studies, I still need a few more details:\n\n" +
-                        "- " + "\n- ".join(missing_fields).replace("_", " ").title()
-                    )
-                }           
+        flattened_raw = flatten_dict(json.loads(raw_json))
+        participant_data = normalize_participant_data(flattened_raw)
 
-            if session_id not in river_pending_confirmation and is_eligible_for_river(participant_data):
-                river_pending_confirmation[session_id] = participant_data
-                return {"reply": (
-                    "🌊 You've been matched to our **River Program** for at-home ketamine therapy via telehealth, designed for individuals with depression, PTSD, or anxiety.\n\n"
-                    "**Would you like to apply now? (Yes or No)**"
-                )}
-
-# ✅ River confirmation response (outside the above block)
-            if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
-                river_qs = [
-                    "Are you currently receiving any treatment for your mental health conditions?",
-                    "Have you ever participated in a clinical trial before?",
-                    "Are you comfortable with regular check-ups and follow-ups as part of the study?"
-                ]
-                del river_pending_confirmation[session_id]
-                return {
-                    "reply": (
-                        "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
-                        "\n- ".join(river_qs)
-                    )
-                }
-
-            with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
-                all_studies = json.load(f)
-
-            matches = match_studies(participant_data, all_studies)
+        required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
+        missing_fields = [k for k in required_fields if not participant_data.get(k)]
+        if missing_fields:
+            print("⚠️ Missing fields:", missing_fields)
             return {
-                "reply": format_matches_for_gpt(matches)
+                "reply": (
+                    "Thanks! I’ve saved your info so far. To match you to studies, I still need a few more details:\n\n" +
+                    "- " + "\n- ".join(missing_fields).replace("_", " ").title()
+                )
             }
 
-           if not matches:
-                last_participant_data[session_id] = participant_data
-                push_to_monday(participant_data)
-                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved."}
+        if session_id not in river_pending_confirmation and is_eligible_for_river(participant_data):
+            river_pending_confirmation[session_id] = participant_data
+            return {"reply": (
+                "🌊 You've been matched to our **River Program** for at-home ketamine therapy via telehealth, designed for individuals with depression, PTSD, or anxiety.\n\n"
+                "**Would you like to apply now? (Yes or No)**"
+            )}
 
-            # ✅ TEMPORARY override to confirm match list structure
-            reply_text = format_matches_for_gpt(matches)
-            print("✅ FORMATTED MATCHES:\n", reply_text)
+        if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
+            river_qs = [
+                "Are you currently receiving any treatment for your mental health conditions?",
+                "Have you ever participated in a clinical trial before?",
+                "Are you comfortable with regular check-ups and follow-ups as part of the study?"
+            ]
+            del river_pending_confirmation[session_id]
+            return {
+                "reply": (
+                    "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
+                    "\n- ".join(river_qs)
+                )
+            }
 
-            push_to_monday(participant_data)
+        with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
+            all_studies = json.load(f)
+
+        matches = match_studies(participant_data, all_studies)
+
+        if not matches:
             last_participant_data[session_id] = participant_data
-            study_selection_stage[session_id] = {"matches": matches}
-            return {
-                "reply": reply_text +
-                        "\n\n🔍 Let me know which of these you'd like to explore. Just type the number or name."
-            }
+            push_to_monday(participant_data)
+            return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
 
-        except Exception as e:
-            print("❌ Exception while processing GPT match JSON:", str(e))
-            print("📨 GPT message was:", gpt_message)
-            return {"reply": "We encountered an error processing your info. Please try again or contact support."}
+        push_to_monday(participant_data)
+        last_participant_data[session_id] = participant_data
+        study_selection_stage[session_id] = {"matches": matches}
+
+        reply_text = format_matches_for_gpt(matches)
+        print("✅ FORMATTED MATCHES:\n", reply_text)
+
+        return {
+            "reply": reply_text +
+                     "\n\n🔍 Let me know which of these you'd like to explore. Just type the number or name."
+        }
+
+    except Exception as e:
+        print("❌ Exception while processing GPT match JSON:", str(e))
+        print("📨 GPT message was:", gpt_message)
+        return {"reply": "We encountered an error processing your info. Please try again or contact support."}
 
     return {"reply": gpt_message if isinstance(gpt_message, str) else "Sorry, I couldn’t generate a response. Please try again."}
+    
