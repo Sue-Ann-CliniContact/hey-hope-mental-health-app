@@ -52,16 +52,30 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
             pass
 
     return True
+def normalize_gender(g):
+    if not g: return ""
+    g = g.lower().strip()
+    if g in ["male", "m"]:
+        return "male"
+    elif g in ["female", "f"]:
+        return "female"
+    return g
 
 def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
     coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
     age = pd.get("age")
-    gender = normalize(pd.get("gender") or pd.get("Gender identity"))
+    gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
     mental = pd.get("Mental Health & Diagnosis", {})
     main_conditions = extract_condition_tags(mental)
 
     participant_tags = set(normalize(tag) for tag in main_conditions)
+
+    if gender:
+        participant_tags.add(gender)
+
+    print("👤 Gender:", gender)
+    print("📌 Participant Tags:", participant_tags)
 
     if gender:
         participant_tags.add(gender)

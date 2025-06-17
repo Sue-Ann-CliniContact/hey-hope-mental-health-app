@@ -88,6 +88,18 @@ def normalize_phone(phone):
         digits = "1" + digits
     return "+" + digits
 
+def normalize_gender(g):
+    if not g: return ""
+    g = g.lower().strip()
+    if g in ["male", "m"]:
+        return "male"
+    elif g in ["female", "f"]:
+        return "female"
+    return g  # return as-is if unexpected
+
+# In normalize_participant_data:
+raw["gender"] = normalize_gender(raw.get("gender") or get_any("gender", "gender identity"))
+
 def calculate_age(dob_str):
     if not dob_str.strip():
         return None
