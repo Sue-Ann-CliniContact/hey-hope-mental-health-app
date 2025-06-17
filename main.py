@@ -98,7 +98,6 @@ def normalize_gender(g):
     return g  # return as-is if unexpected
 
 # In normalize_participant_data:
-raw["gender"] = normalize_gender(raw.get("gender") or get_any("gender", "gender identity"))
 
 def calculate_age(dob_str):
     if not dob_str.strip():
@@ -158,6 +157,7 @@ def flatten_dict(d, parent_key='', sep=' - '):
 def normalize_participant_data(raw):
     key_map = {k.lower(): k for k in raw}
 
+    
     def get_any(*keys):
         for key in keys:
             match = next((raw[v] for k, v in key_map.items() if key.lower() in k), None)
@@ -167,17 +167,16 @@ def normalize_participant_data(raw):
 
     raw["dob"] = raw.get("dob") or get_any("date of birth")
     raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
-    raw["gender"] = raw.get("gender") or get_any("gender", "gender identity")
     raw["zip"] = raw.get("zip") or get_any("zip", "zip code")
+
+    raw_gender = raw.get("gender") or get_any("gender", "gender identity")
+    raw["gender"] = normalize_gender(raw_gender)
 
     loc = raw.get("location") or get_any("location")
     if loc and "," in loc:
         parts = [p.strip() for p in loc.split(",")]
         raw["city"] = parts[0]
         raw["state"] = normalize_state(parts[1]) if len(parts) > 1 else ""
-    else:
-        raw["city"] = raw.get("city") or get_any("city")
-        raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
         # If city/state still missing but zip is available, enrich via geolocator
         if (not raw["city"] or not raw["state"]) and raw.get("zip"):
