@@ -1,7 +1,8 @@
 # === UPDATED matcher.py (only adjusted filtering logic) ===
+import os
+from geopy.geocoders import GoogleV3
 from geopy.distance import geodesic
 
-from geopy.geocoders import GoogleV3
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
 def get_location_coords(zip_code):
