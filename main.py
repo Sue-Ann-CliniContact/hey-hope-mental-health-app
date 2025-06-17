@@ -172,22 +172,27 @@ def normalize_participant_data(raw):
     raw_gender = raw.get("gender") or get_any("gender", "gender identity")
     raw["gender"] = normalize_gender(raw_gender)
 
-    loc = raw.get("location") or get_any("location")
-    if loc and "," in loc:
-        parts = [p.strip() for p in loc.split(",")]
-        raw["city"] = parts[0]
-        raw["state"] = normalize_state(parts[1]) if len(parts) > 1 else ""
+    # Safely assign city and state first
+    raw["city"] = raw.get("city") or get_any("city")
+    raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
-        # If city/state still missing but zip is available, enrich via geolocator
-        if (not raw["city"] or not raw["state"]) and raw.get("zip"):
-            try:
-                loc = geolocator.geocode(raw["zip"])
-                if loc and hasattr(loc, 'raw'):
-                    address = loc.raw.get("address", {})
-                    raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village")
-                    raw["state"] = raw["state"] or normalize_state(address.get("state", ""))
-            except Exception as e:
-                print("⚠️ ZIP enrichment failed:", e)
+    # Enrich from ZIP if still missing
+    if (not raw["city"] or not raw["state"]) and raw.get("zip"):
+        try:
+            loc = geolocator.geocode(raw["zip"])
+            if loc and hasattr(loc, 'raw'):
+                address = loc.raw.get("address", {})
+                raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village")
+                raw["state"] = raw["state"] or normalize_state(address.get("state", ""))
+        except Exception as e:
+            print("⚠️ ZIP enrichment failed:", e)
+
+    # Final fallback to prevent crash
+    raw["city"] = raw.get("city") or "Unknown"
+    raw["state"] = raw.get("state") or "Unknown"
+
+    # Compose location string after all enrichment
+    raw["location"] = f"{raw['city']}, {raw['state']}"
 
     conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
     if isinstance(conds, list):
