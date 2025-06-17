@@ -4,6 +4,18 @@ from geopy.distance import geodesic
 HIGH_MATCH_THRESHOLD = 8
 GOOD_MATCH_THRESHOLD = 5
 
+
+# ✅ Gender normalization shared across files
+def normalize_gender(g):
+    if not g:
+        return ""
+    g = g.lower().strip()
+    if g in ["male", "m"]:
+        return "male"
+    elif g in ["female", "f"]:
+        return "female"
+    return g
+
 def format_contact(study):
     primary = study.get("contact_name", "")
     email = study.get("contact_email", "")

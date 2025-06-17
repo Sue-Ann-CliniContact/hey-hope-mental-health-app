@@ -6,6 +6,7 @@ import json
 import re
 from matcher import match_studies
 from utils import format_matches_for_gpt
+from utils import normalize_gender
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3

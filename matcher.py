@@ -2,6 +2,7 @@ import os
 from geopy.geocoders import GoogleV3
 from geopy.distance import geodesic
 from datetime import datetime
+from utils import normalize_gender
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
