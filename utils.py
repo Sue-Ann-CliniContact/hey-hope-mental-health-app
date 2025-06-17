@@ -1,11 +1,13 @@
 from geopy.distance import geodesic
 
-# ✅ Extracted earlier to avoid forward reference
+# === Confidence thresholds ===
+HIGH_MATCH_THRESHOLD = 8
+GOOD_MATCH_THRESHOLD = 5
 
 def format_contact(study):
-    primary = study.get("contact_name") or ""
-    email = study.get("contact_email") or ""
-    phone = study.get("contact_phone") or ""
+    primary = study.get("contact_name", "")
+    email = study.get("contact_email", "")
+    phone = study.get("contact_phone", "")
     if primary or email or phone:
         return f"{primary} | {email} | {phone}".strip(" |")
     return "Not provided"
@@ -15,15 +17,15 @@ def format_matches_for_gpt(matches):
         return "❌ Sorry, we couldn't find any matching studies at the moment."
 
     def get_confidence_label(score):
-        if score >= 8:
+        if score >= HIGH_MATCH_THRESHOLD:
             return "✅ High Match"
-        elif score >= 5:
+        elif score >= GOOD_MATCH_THRESHOLD:
             return "👍 Good Match"
         else:
             return "📌 Possible Match"
 
     def classify_location(coords):
-        # Assume near LA unless future dynamic center added
+        # Default center: LA coordinates
         center = (33.9697897, -118.2468148)
         try:
             if coords:
@@ -44,7 +46,7 @@ def format_matches_for_gpt(matches):
     }
 
     for match in matches:
-        study = match["study"]
+        study = match.get("study", {})
         score = match.get("match_score", 0)
         reasons = match.get("match_reason", [])
         tag = classify_location(study.get("coordinates"))
@@ -72,8 +74,10 @@ def format_matches_for_gpt(matches):
     def format_group(label, studies):
         if not studies:
             return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
+
         out = f"\n\n### 🏷️ {label} Studies\n"
         studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
+
         for i, s in enumerate(studies[:10], 1):
             confidence = get_confidence_label(s["match_confidence"])
             summary = (s["summary"] or "Not provided")[:300] + ("..." if s["summary"] and len(s["summary"]) > 300 else "")
@@ -90,8 +94,9 @@ def format_matches_for_gpt(matches):
             is_river = "river" in s['study_title'].lower()
             river_label = " 🌊 **[River Program]**" if is_river else ""
 
+            safe_link = s['link'] or "#"
             out += (
-                f"\n**{i}. [{s['study_title']}]({s['link']}){river_label}**\n"
+                f"\n**{i}. [{s['study_title']}]({safe_link}){river_label}**\n"
                 f"📍 **Location**: {s['locations']}\n"
                 f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
                 f"📜 **Summary**: {summary}\n"
