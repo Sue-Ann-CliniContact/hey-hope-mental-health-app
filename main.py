@@ -329,6 +329,4 @@ async def chat_handler(request: Request):
         print("❌ Exception while processing GPT match JSON:", str(e))
         print("📨 GPT message was:", gpt_message)
         return {"reply": "We encountered an error processing your info. Please try again or contact support."}
-
-   return {"reply": "Thanks! I'm still gathering your details. Could you clarify or provide any missing information?"}
     
