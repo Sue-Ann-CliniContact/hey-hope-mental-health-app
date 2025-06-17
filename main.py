@@ -52,6 +52,9 @@ Follow-up rules:
 - Ask about bipolar only if a study excludes it.
 - Ask about gender-specific requirements only if needed.
 - If eligible, ask River Program follow-ups.
+
+Important: Do NOT include any introductory or summary text in your replies. Only return a JSON object.
+Always return only a JSON object with participant answers. Do NOT return any lists of study titles or commentary.
 """
 
 chat_histories = {}
@@ -300,8 +303,10 @@ async def chat_handler(request: Request):
 
         with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
             all_studies = json.load(f)
-
+            
+        print("🧠 Matching studies using participant data:", participant_data)
         matches = match_studies(participant_data, all_studies)
+        print("📋 Found matches:", [m["study"]["study_title"] for m in matches])
 
         if not matches:
             last_participant_data[session_id] = participant_data
@@ -325,5 +330,5 @@ async def chat_handler(request: Request):
         print("📨 GPT message was:", gpt_message)
         return {"reply": "We encountered an error processing your info. Please try again or contact support."}
 
-    return {"reply": gpt_message if isinstance(gpt_message, str) else "Sorry, I couldn’t generate a response. Please try again."}
+   return {"reply": "Thanks! I'm still gathering your details. Could you clarify or provide any missing information?"}
     
