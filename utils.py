@@ -47,7 +47,6 @@ def format_matches_for_gpt(matches):
             return "📌 Possible Match"
 
     def classify_location(coords):
-        # Default reference point: Los Angeles
         center = (33.9697897, -118.2468148)
         try:
             if coords:
@@ -99,40 +98,40 @@ def format_matches_for_gpt(matches):
             global_index[0] += 1
             confidence = get_confidence_label(s["match_confidence"])
 
-        summary = (s["summary"] or "Not provided")[:300]
-        if s["summary"] and len(s["summary"]) > 300:
-            summary += "..."
+            summary = (s["summary"] or "Not provided")[:300]
+            if s["summary"] and len(s["summary"]) > 300:
+                summary += "..."
 
-        eligibility = (s["eligibility"] or "Not specified")[:250]
-        if s["eligibility"] and len(s["eligibility"]) > 250:
-            eligibility += "..."
+            eligibility = (s["eligibility"] or "Not specified")[:250]
+            if s["eligibility"] and len(s["eligibility"]) > 250:
+                eligibility += "..."
 
-        highlights = ""
-        if s["matched_includes"]:
-            highlights += "\n✨ Included: " + ", ".join(s["matched_includes"])
-        if s["missing_required"]:
-            highlights += "\n⚠️ Missing: " + ", ".join(s["missing_required"])
-        if s["excluded_flags"]:
-            highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
+            highlights = ""
+            if s["matched_includes"]:
+                highlights += "\n✨ Included: " + ", ".join(s["matched_includes"])
+            if s["missing_required"]:
+                highlights += "\n⚠️ Missing: " + ", ".join(s["missing_required"])
+            if s["excluded_flags"]:
+                highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
 
-        is_river = "river" in s["study_title"].lower()
-        river_label = " 🌊 **[River Program]**" if is_river else ""
-        safe_link = s["link"] or "#"
+            is_river = "river" in s["study_title"].lower()
+            river_label = " 🌊 **[River Program]**" if is_river else ""
+            safe_link = s["link"] or "#"
 
-        out += (
-            f"\n**{i}. [{s['study_title']}]({safe_link}){river_label}**\n"
-            f"📍 **Location**: {s['locations']}\n"
-            f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
-            f"📜 **Summary**: {summary}\n"
-            f"✅ **Why it matches**: {s['match_rationale']}\n"
-            f"📄 **Eligibility Highlights**: {eligibility}{highlights}\n"
-            f"☎️ **Contact**: {s['contacts']}\n"
-        )
-    return out
+            out += (
+                f"\n**{i}. [{s['study_title']}]({safe_link}){river_label}**\n"
+                f"📍 **Location**: {s['locations']}\n"
+                f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
+                f"📜 **Summary**: {summary}\n"
+                f"✅ **Why it matches**: {s['match_rationale']}\n"
+                f"📄 **Eligibility Highlights**: {eligibility}{highlights}\n"
+                f"☎️ **Contact**: {s['contacts']}\n"
+            )
+        return out
 
     global_index = [1]
     return (
-        format_group("Near You", grouped["Near You"]) +
-        format_group("National", grouped["National"]) +
-        format_group("Other", grouped["Other"])
+        format_group("Near You", grouped["Near You"], global_index) +
+        format_group("National", grouped["National"], global_index) +
+        format_group("Other", grouped["Other"], global_index)
     ).strip()
