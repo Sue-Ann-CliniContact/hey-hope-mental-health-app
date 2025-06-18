@@ -347,7 +347,7 @@ async def chat_handler(request: Request):
         last_participant_data[session_id] = participant_data
 
         # Match studies
-        from tagged_indexed_studies_heyhope_final import all_studies  # or however you're loading the studies
+        from tagged_indexed_studies_heyhope_final.json import all_studies  # or however you're loading the studies
         matches = match_studies(participant_data, all_studies)
         study_selection_stage[session_id] = {"matches": matches}
 
