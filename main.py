@@ -215,6 +215,7 @@ async def chat_handler(request: Request):
     if contains_red_flag(user_input):
         return {"reply": "🚨 If you’re in immediate danger, call 911 or contact the 988 Suicide & Crisis Lifeline."}
 
+    # ✅ If River follow-up confirmation is expected
     if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
         river_qs = [
             "Have you been diagnosed with bipolar II disorder?",
@@ -222,7 +223,6 @@ async def chat_handler(request: Request):
             "Have you used ketamine recreationally in the past?"
         ]
         study_selection_stage.pop(session_id, None)
-        del river_pending_confirmation[session_id]
         return {
             "reply": (
                 "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
@@ -230,6 +230,7 @@ async def chat_handler(request: Request):
             )
         }
 
+    # ✅ Handle multi-selection of study matches (e.g., "1, 11")
     if session_id in study_selection_stage:
         matches = study_selection_stage[session_id]["matches"]
         input_text = user_input.strip().lower()
@@ -253,14 +254,17 @@ async def chat_handler(request: Request):
             "require_veteran": "Are you a U.S. military veteran?"
         }
 
+        river_included = False
         for match in selected:
             title = match["study"].get("study_title", "Untitled Study")
             tags = match["study"].get("tags", [])
             q_set = [tag_question_map[tag] for tag in tags if tag in tag_question_map]
             if q_set:
                 questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set))
+            if "river" in title.lower():
+                river_included = True
 
-        if any("river" in m["study"]["study_title"].lower() for m in selected):
+        if river_included:
             river_pending_confirmation[session_id] = last_participant_data.get(session_id, {})
             return {
                 "reply": (
@@ -307,17 +311,31 @@ async def chat_handler(request: Request):
         if session_id in river_pending_confirmation:
             try:
                 river_answers = flatten_dict(json.loads(raw_json))
-                participant_data = river_pending_confirmation.pop(session_id)
                 river_answers = {k.lower(): v for k, v in river_answers.items()}
+                participant_data = river_pending_confirmation.pop(session_id)
                 participant_data.update(river_answers)
+
+                # Re-check required fields
+                required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
+                missing_fields = [k for k in required_fields if not participant_data.get(k)]
+                if missing_fields:
+                    print("⚠️ Missing fields in River follow-up:", missing_fields)
+                    return {
+                        "reply": (
+                            "Thanks! Just one last step before we confirm your eligibility:
+\n\n" +
+                            "- " + "\n- ".join(missing_fields).replace("_", " ").title()
+                        )
+                    }
+
                 last_participant_data[session_id] = participant_data
-                push_to_monday(participant_data)  # optional
+                push_to_monday(participant_data)
                 return {
                     "reply": "Thanks! You’re all set for the River Program. A coordinator will reach out to you soon."
                 }
             except Exception as e:
-                print("⚠️ Failed to process River follow-up answers:", str(e))
-                return {"reply": "Sorry, I couldn’t process that. Could you answer again briefly?"}   
+                print("❌ River processing failed:", str(e))
+                return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
 
         flattened_raw = flatten_dict(json.loads(raw_json))
         participant_data = normalize_participant_data(flattened_raw)
