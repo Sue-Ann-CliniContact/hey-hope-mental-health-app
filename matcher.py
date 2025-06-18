@@ -48,6 +48,8 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
         try:
             distance = geodesic(coords, study["coordinates"]).miles
             if distance > 100:
+                if "include_telehealth" in tags:
+                    return True
                 return False
         except:
             pass
@@ -59,8 +61,17 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
     age = pd.get("age")
     gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
-    conditions_raw = pd.get("diagnosis_history") or pd.get("Conditions") or ""
+    conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
     main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
+    
+
+    # Add normalized condition tags
+    participant_tags = set(normalize(c) for c in main_conditions)
+
+    # Should contain:
+    #   - "ptsd"
+    #   - "depression"
+    #   → so they match tags like "include_ptsd"
 
     participant_tags = set(normalize(tag) for tag in main_conditions)
     if gender:
@@ -92,7 +103,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             score = 5
             reasons = []
 
-            if not any(pt in tags for pt in participant_tags):
+            if not any(f"include_{pt}" in tags or pt in tags for pt in participant_tags):
                 score -= 3
                 reasons.append("⚠️ Main condition may not match")
 
@@ -103,12 +114,12 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                 if tag.startswith("require_") and tag[8:] not in participant_tags:
                     reasons.append(f"⚠️ Missing required: {tag[8:]}")
                     score -= 2
-                if tag.startswith("include_") and tag[8:] in participant_tags:
+                if tag.startswith("include_") and (tag[8:] in participant_tags):
                     reasons.append(f"✅ Matches include: {tag[8:]}")
                     score += 1
 
             if "river" in title.lower():
-                score += 2
+                score += 3
                 reasons.append("🌊 Prioritized River Program")
 
             eligible_studies.append({
