@@ -94,10 +94,10 @@ def format_matches_for_gpt(matches):
         out = f"\n\n### 🏷️ {label} Studies\n"
         studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
 
-    for s in studies[:10]:
-        i = global_index[0]
-        global_index[0] += 1
-        confidence = get_confidence_label(s["match_confidence"])
+        for s in studies[:10]:
+            i = global_index[0]
+            global_index[0] += 1
+            confidence = get_confidence_label(s["match_confidence"])
 
         summary = (s["summary"] or "Not provided")[:300]
         if s["summary"] and len(s["summary"]) > 300:
