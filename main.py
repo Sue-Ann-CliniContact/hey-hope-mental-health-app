@@ -6,6 +6,7 @@ import json
 import re
 from matcher import match_studies
 from utils import format_matches_for_gpt, normalize_gender
+from utils import flatten_dict, normalize_gender
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3
@@ -271,7 +272,13 @@ async def chat_handler(request: Request):
 
     match = re.search(r'{[\s\S]*}', gpt_message)
     if not match:
-        return {"reply": gpt_message if isinstance(gpt_message, str) else "Sorry, I couldn’t generate a response. Please try again."}
+        # GPT kept chatting — stop it here and warn
+        return {
+            "reply": (
+                "⚠️ I expected a structured summary of your answers so I can match you to studies. "
+                "Please start again or type your details directly."
+            )
+        }
 
     try:
         raw_json = match.group()
