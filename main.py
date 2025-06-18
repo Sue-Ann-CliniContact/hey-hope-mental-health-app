@@ -5,7 +5,6 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import format_matches_for_gpt, normalize_gender
 from utils import flatten_dict, normalize_gender
 from push_to_monday import push_to_monday
 from datetime import datetime
@@ -35,11 +34,7 @@ First, collect:
 - ZIP code
 - Their main mental health concern(s) like depression, anxiety, or PTSD
 
-Once these are collected, perform initial matching using:
-- Age
-- Location
-- Gender
-- Main condition(s)
+After collecting just those fields, stop and return ONLY a JSON object with those values. Do NOT ask follow-up questions yet.
 
 Return a broad list of studies (10–20), including the River Program if eligible.
 
@@ -154,6 +149,16 @@ def flatten_dict(d, parent_key='', sep=' - '):
             items[new_key] = v
     return items
 
+def normalize_participant_data(raw):
+    key_map = {k.lower(): k for k in raw}
+
+    def get_any(*keys):
+        for key in keys:
+            match = next((raw[v] for k, v in key_map.items() if key.lower() in k), None)
+            if match:
+                return match
+        return ""
+
     raw["dob"] = raw.get("dob") or get_any("date of birth")
     raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
     raw["zip"] = raw.get("zip") or get_any("zip", "zip code")
@@ -161,11 +166,9 @@ def flatten_dict(d, parent_key='', sep=' - '):
     raw_gender = raw.get("gender") or get_any("gender", "gender identity")
     raw["gender"] = normalize_gender(raw_gender)
 
-    # Safely assign city/state first
     raw["city"] = raw.get("city") or get_any("city")
     raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
-    # Enrich from ZIP if missing city/state
     if (not raw["city"] or not raw["state"]) and raw.get("zip"):
         try:
             loc = geolocator.geocode(raw["zip"])
@@ -176,22 +179,16 @@ def flatten_dict(d, parent_key='', sep=' - '):
         except Exception as e:
             print("⚠️ ZIP enrichment failed:", e)
 
-    # Final fallback defaults
     raw["city"] = raw.get("city") or "Unknown"
     raw["state"] = raw.get("state") or "Unknown"
-
-    # Compose enriched location
     raw["location"] = f"{raw['city']}, {raw['state']}"
 
-    # Normalize conditions
     conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
     raw["diagnosis_history"] = ", ".join(conds) if isinstance(conds, list) else conds
 
-    # Age, coordinates
     raw["age"] = calculate_age(raw["dob"])
     raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
-    # Extra filters
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
     raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine therapy", "ketamine use")
@@ -271,8 +268,7 @@ async def chat_handler(request: Request):
     chat_histories[session_id].append({"role": "assistant", "content": gpt_message})
 
     match = re.search(r'{[\s\S]*}', gpt_message)
-    if not match:
-        # GPT kept chatting — stop it here and warn
+    if not match or not gpt_message.strip().startswith("{"):
         return {
             "reply": (
                 "⚠️ I expected a structured summary of your answers so I can match you to studies. "
@@ -284,7 +280,6 @@ async def chat_handler(request: Request):
         raw_json = match.group()
         print("🔍 Raw JSON extracted:", raw_json)
 
-        from utils import flatten_dict, normalize_participant_data
         flattened_raw = flatten_dict(json.loads(raw_json))
         participant_data = normalize_participant_data(flattened_raw)
 

@@ -59,8 +59,8 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
     age = pd.get("age")
     gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
-    mental = pd.get("Mental Health & Diagnosis", {})
-    main_conditions = extract_condition_tags(mental)
+    conditions_raw = pd.get("diagnosis_history") or pd.get("Conditions") or ""
+    main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
 
     participant_tags = set(normalize(tag) for tag in main_conditions)
     if gender:
@@ -74,7 +74,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         participant_tags.add("blood_pressure")
     if normalize(pd.get("ketamine_use", "")) == "yes":
         participant_tags.add("ketamine_use")
-    if normalize(pd.get("U.S. Veteran", "")) == "yes":
+    if normalize(pd.get("U.S. Veteran", "") or pd.get("veteran", "")) == "yes":
         participant_tags.add("veteran")
 
     print("👤 Gender:", gender)
@@ -85,7 +85,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         title = study.get("study_title", "")
         tags = [normalize(tag) for tag in study.get("tags", [])]
 
-        if exclude_river and "river" in title.lower():
+        if exclude_river and "river program" in title.lower():
             continue
 
         if passes_basic_filters(study, participant_tags, age, gender, coords):
