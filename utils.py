@@ -88,11 +88,11 @@ def format_matches_for_gpt(matches):
         grouped[tag].append(formatted)
 
     def format_group(label, studies, global_index):
-    if not studies:
-        return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
+        if not studies:
+            return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
 
-    out = f"\n\n### 🏷️ {label} Studies\n"
-    studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
+        out = f"\n\n### 🏷️ {label} Studies\n"
+        studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
 
     for s in studies[:10]:
         i = global_index[0]
