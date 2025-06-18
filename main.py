@@ -323,7 +323,7 @@ async def chat_handler(request: Request):
                     return {
                         "reply": (
                             "Thanks! Just one last step before we confirm your eligibility:
-\n\n" +
+                            \n\n" +
                             "- " + "\n- ".join(missing_fields).replace("_", " ").title()
                         )
                     }
