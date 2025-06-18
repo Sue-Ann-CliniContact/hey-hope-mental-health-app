@@ -5,7 +5,6 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import flatten_dict, normalize_gender
 from utils import flatten_dict, normalize_gender, format_matches_for_gpt
 from push_to_monday import push_to_monday
 from datetime import datetime
@@ -53,6 +52,7 @@ After collecting just those fields, stop and return ONLY a JSON object with thos
   "Gender": "Female",
   "ZIP code": "94110",
   "Conditions": ["Depression", "PTSD"]
+}
 
 Return a broad list of studies (10–20), including the River Program if eligible.
 
@@ -101,16 +101,6 @@ def normalize_phone(phone):
     if not digits.startswith("1"):
         digits = "1" + digits
     return "+" + digits
-
-# Optional fallback definition only if not imported
-# def normalize_gender(g):
-#     if not g: return ""
-#     g = g.lower().strip()
-#     if g in ["male", "m"]:
-#         return "male"
-#     elif g in ["female", "f"]:
-#         return "female"
-#     return g
 
 def calculate_age(dob_str):
     if not dob_str.strip():
@@ -215,7 +205,7 @@ def normalize_participant_data(raw):
         raw["pregnant"] = "No"
 
     return raw
-    
+
 @app.post("/chat")
 async def chat_handler(request: Request):
     body = await request.json()
@@ -224,6 +214,21 @@ async def chat_handler(request: Request):
 
     if contains_red_flag(user_input):
         return {"reply": "🚨 If you’re in immediate danger, call 911 or contact the 988 Suicide & Crisis Lifeline."}
+
+    if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
+        river_qs = [
+            "Are you currently receiving any treatment for your mental health conditions?",
+            "Have you ever participated in a clinical trial before?",
+            "Are you comfortable with regular check-ups and follow-ups as part of the study?"
+        ]
+        study_selection_stage.pop(session_id, None)
+        del river_pending_confirmation[session_id]
+        return {
+            "reply": (
+                "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
+                "\n- ".join(river_qs)
+            )
+        }
 
     if session_id in study_selection_stage:
         matches = study_selection_stage[session_id]["matches"]
@@ -324,7 +329,6 @@ async def chat_handler(request: Request):
             push_to_monday(participant_data)
             return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
 
-        # Store for River confirmation
         last_participant_data[session_id] = participant_data
         study_selection_stage[session_id] = {"matches": matches}
         push_to_monday(participant_data)
@@ -335,20 +339,6 @@ async def chat_handler(request: Request):
                 "🌊 You've been matched to our **River Program** for at-home ketamine therapy via telehealth, designed for individuals with depression, PTSD, or anxiety.\n\n"
                 "**Would you like to apply now? (Yes or No)**"
             )}
-
-        if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
-            river_qs = [
-                "Are you currently receiving any treatment for your mental health conditions?",
-                "Have you ever participated in a clinical trial before?",
-                "Are you comfortable with regular check-ups and follow-ups as part of the study?"
-            ]
-            del river_pending_confirmation[session_id]
-            return {
-                "reply": (
-                    "Great! To confirm your eligibility for the River Program, please answer the following:\n\n- " +
-                    "\n- ".join(river_qs)
-                )
-            }
 
         reply_text = format_matches_for_gpt(matches)
         print("✅ FORMATTED MATCHES:\n", reply_text)

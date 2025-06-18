@@ -60,12 +60,7 @@ def format_matches_for_gpt(matches):
             pass
         return "Other"
 
-    grouped = {
-        "Near You": [],
-        "National": [],
-        "Other": []
-    }
-
+    grouped = {"Near You": [], "National": [], "Other": []}
     for match in matches:
         study = match.get("study", {})
         score = match.get("match_score", 0)
@@ -92,46 +87,50 @@ def format_matches_for_gpt(matches):
 
         grouped[tag].append(formatted)
 
-    def format_group(label, studies):
-        if not studies:
-            return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
+    def format_group(label, studies, global_index):
+    if not studies:
+        return f"\n\n### 🏷️ {label} Studies\nNo studies available in this category."
 
-        out = f"\n\n### 🏷️ {label} Studies\n"
-        studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
+    out = f"\n\n### 🏷️ {label} Studies\n"
+    studies = sorted(studies, key=lambda x: x["match_confidence"], reverse=True)
 
-        for i, s in enumerate(studies[:10], 1):
-            confidence = get_confidence_label(s["match_confidence"])
-            summary = (s["summary"] or "Not provided")[:300]
-            if s["summary"] and len(s["summary"]) > 300:
-                summary += "..."
+    for s in studies[:10]:
+        i = global_index[0]
+        global_index[0] += 1
+        confidence = get_confidence_label(s["match_confidence"])
 
-            eligibility = (s["eligibility"] or "Not specified")[:250]
-            if s["eligibility"] and len(s["eligibility"]) > 250:
-                eligibility += "..."
+        summary = (s["summary"] or "Not provided")[:300]
+        if s["summary"] and len(s["summary"]) > 300:
+            summary += "..."
 
-            highlights = ""
-            if s["matched_includes"]:
-                highlights += "\n✨ Included: " + ", ".join(s["matched_includes"])
-            if s["missing_required"]:
-                highlights += "\n⚠️ Missing: " + ", ".join(s["missing_required"])
-            if s["excluded_flags"]:
-                highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
+        eligibility = (s["eligibility"] or "Not specified")[:250]
+        if s["eligibility"] and len(s["eligibility"]) > 250:
+            eligibility += "..."
 
-            is_river = "river" in s["study_title"].lower()
-            river_label = " 🌊 **[River Program]**" if is_river else ""
-            safe_link = s["link"] or "#"
+        highlights = ""
+        if s["matched_includes"]:
+            highlights += "\n✨ Included: " + ", ".join(s["matched_includes"])
+        if s["missing_required"]:
+            highlights += "\n⚠️ Missing: " + ", ".join(s["missing_required"])
+        if s["excluded_flags"]:
+            highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
 
-            out += (
-                f"\n**{i}. [{s['study_title']}]({safe_link}){river_label}**\n"
-                f"📍 **Location**: {s['locations']}\n"
-                f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
-                f"📜 **Summary**: {summary}\n"
-                f"✅ **Why it matches**: {s['match_rationale']}\n"
-                f"📄 **Eligibility Highlights**: {eligibility}{highlights}\n"
-                f"☎️ **Contact**: {s['contacts']}\n"
-            )
-        return out
+        is_river = "river" in s["study_title"].lower()
+        river_label = " 🌊 **[River Program]**" if is_river else ""
+        safe_link = s["link"] or "#"
 
+        out += (
+            f"\n**{i}. [{s['study_title']}]({safe_link}){river_label}**\n"
+            f"📍 **Location**: {s['locations']}\n"
+            f"🏅 **Match Score**: {s['match_confidence']}/10  |  {confidence}\n"
+            f"📜 **Summary**: {summary}\n"
+            f"✅ **Why it matches**: {s['match_rationale']}\n"
+            f"📄 **Eligibility Highlights**: {eligibility}{highlights}\n"
+            f"☎️ **Contact**: {s['contacts']}\n"
+        )
+    return out
+
+    global_index = [1]
     return (
         format_group("Near You", grouped["Near You"]) +
         format_group("National", grouped["National"]) +
