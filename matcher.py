@@ -29,7 +29,7 @@ def extract_condition_tags(mental_section):
         return [normalize(c) for c in conds.split(",")]
     return []
 
-def passes_basic_filters(study, participant_tags, age, gender, coords):
+def passes_basic_filters(study, participant_tags, age, gender, coords, participant_state=""):
     tags = [normalize(tag) for tag in study.get("tags", [])]
 
     if study.get("min_age_years") is not None and age is not None:
@@ -43,6 +43,11 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
         return False
     if "exclude_male" in tags and gender == "male":
         return False
+
+    # ✅ State-specific match logic
+    if "states" in study and isinstance(study["states"], list):
+        if participant_state.upper() not in [s.upper() for s in study["states"]]:
+            return False
 
     if coords and study.get("coordinates"):
         try:
@@ -63,15 +68,10 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
     conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
     main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
-    
+    participant_state = pd.get("state", "").upper()
 
     # Add normalized condition tags
     participant_tags = set(normalize(c) for c in main_conditions)
-
-    # Should contain:
-    #   - "ptsd"
-    #   - "depression"
-    #   → so they match tags like "include_ptsd"
 
     participant_tags = set(normalize(tag) for tag in main_conditions)
     if gender:
@@ -99,7 +99,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         if exclude_river and "river program" in title.lower():
             continue
 
-        if passes_basic_filters(study, participant_tags, age, gender, coords):
+        if passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
             score = 5
             reasons = []
 

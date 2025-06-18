@@ -114,7 +114,7 @@ def format_matches_for_gpt(matches):
             if s["excluded_flags"]:
                 highlights += "\n🚫 Excluded: " + ", ".join(s["excluded_flags"])
 
-            is_river = "river" in s["study_title"].lower()
+            is_river = s["study_title"].strip().lower() == "river nonprofit ketamine trial"
             river_label = " 🌊 **[River Program]**" if is_river else ""
             safe_link = s["link"] or "#"
 
