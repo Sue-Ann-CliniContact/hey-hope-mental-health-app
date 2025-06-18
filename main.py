@@ -339,6 +339,6 @@ async def chat_handler(request: Request):
                 return {
                     "reply": "Thanks! You’re all set for the River Program. A coordinator will reach out to you soon."
                 }
-            except Exception as e:
-                print("❌ River processing failed:", str(e))
-                return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
+    except Exception as e:
+        print("❌ River processing failed:", str(e))
+        return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
