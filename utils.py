@@ -46,8 +46,19 @@ def format_matches_for_gpt(matches):
         else:
             return "📌 Possible Match"
 
-    def classify_location(coords):
-        center = (33.9697897, -118.2468148)
+    def classify_location(coords, study=None, participant_state=None):
+        # Special case: River should not be national
+        if study:
+            title = study.get("study_title", "").strip().lower()
+            states = study.get("states", [])
+
+            if "river nonprofit ketamine trial" == title:
+                return "Other" if participant_state not in [s.upper() for s in states] else "Near You"
+
+            if states and participant_state and participant_state.upper() in [s.upper() for s in states]:
+                return "Near You"
+
+        center = (33.9697897, -118.2468148)  # default US center for distance check
         try:
             if coords:
                 distance = geodesic(coords, center).miles
@@ -64,7 +75,8 @@ def format_matches_for_gpt(matches):
         study = match.get("study", {})
         score = match.get("match_score", 0)
         reasons = match.get("match_reason", [])
-        tag = classify_location(study.get("coordinates"))
+        participant_state = study.get("participant_state")
+        tag = classify_location(study.get("coordinates"), study=study, participant_state=participant_state)
 
         matched_includes = [r for r in reasons if "Matches include" in r]
         missing_required = [r for r in reasons if "Missing required" in r]
