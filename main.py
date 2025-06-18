@@ -322,8 +322,7 @@ async def chat_handler(request: Request):
                     print("⚠️ Missing fields in River follow-up:", missing_fields)
                     return {
                         "reply": (
-                            "Thanks! Just one last step before we confirm your eligibility:
-                            \n\n" +
+                            "Thanks! Just one last step before we confirm your eligibility:\n\n" +
                             "- " + "\n- ".join(missing_fields).replace("_", " ").title()
                         )
                     }
