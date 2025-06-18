@@ -236,6 +236,10 @@ async def chat_handler(request: Request):
         input_text = user_input.strip().lower()
         selected = []
 
+        participant_data = last_participant_data.get(session_id, {})
+        if participant_data:
+            last_participant_data[session_id] = participant_data  # <== add here to ensure continuity
+
         for i, m in enumerate(matches, 1):
             if str(i) in input_text or m["study"].get("study_title", "").lower() in input_text:
                 selected.append(m)

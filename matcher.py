@@ -44,6 +44,12 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
     if "exclude_male" in tags and gender == "male":
         return False
 
+    # ✅ Enforce location requirement for River
+    title = study.get("study_title", "").strip().lower()
+    if "river nonprofit ketamine trial" == title:
+        if participant_state.upper() not in ["CA", "MT"]:
+            return False
+    
     # ✅ State-specific match logic
     if "states" in study and isinstance(study["states"], list):
         if participant_state.upper() not in [s.upper() for s in study["states"]]:
