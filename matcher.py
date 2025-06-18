@@ -53,14 +53,6 @@ def passes_basic_filters(study, participant_tags, age, gender, coords):
             pass
 
     return True
-def normalize_gender(g):
-    if not g: return ""
-    g = g.lower().strip()
-    if g in ["male", "m"]:
-        return "male"
-    elif g in ["female", "f"]:
-        return "female"
-    return g
 
 def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
@@ -71,15 +63,9 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     main_conditions = extract_condition_tags(mental)
 
     participant_tags = set(normalize(tag) for tag in main_conditions)
-
     if gender:
         participant_tags.add(gender)
 
-    print("👤 Gender:", gender)
-    print("📌 Participant Tags:", participant_tags)
-
-    if gender:
-        participant_tags.add(gender)
     if pd.get("Pregnant or Breastfeeding") is True or pd.get("Pregnant or breastfeeding (Follow-Up)") is True:
         participant_tags.add("pregnant")
     if normalize(pd.get("bipolar", "")) == "yes":
@@ -90,6 +76,9 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         participant_tags.add("ketamine_use")
     if normalize(pd.get("U.S. Veteran", "")) == "yes":
         participant_tags.add("veteran")
+
+    print("👤 Gender:", gender)
+    print("📌 Participant Tags:", participant_tags)
 
     eligible_studies = []
     for study in all_studies:
@@ -118,24 +107,19 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                     reasons.append(f"✅ Matches include: {tag[8:]}")
                     score += 1
 
+            if "river" in title.lower():
+                score += 2
+                reasons.append("🌊 Prioritized River Program")
+
             eligible_studies.append({
                 "study": study,
                 "match_score": max(1, min(score, 10)),
                 "match_reason": reasons
             })
 
-    for e in eligible_studies:
-        title = e["study"].get("study_title", "")
-        if "river" in title.lower():
-            e["match_score"] += 2
-            e["match_reason"].append("🌊 Prioritized River Program")
-
     sorted_matches = sorted(
         eligible_studies,
-        key=lambda x: (
-            -x["match_score"],
-            "river" not in x["study"].get("study_title", "").lower()
-        )
+        key=lambda x: (-x["match_score"], "river" not in x["study"].get("study_title", "").lower())
     )[:20]
 
     matched_tags = set()

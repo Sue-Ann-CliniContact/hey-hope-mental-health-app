@@ -5,8 +5,7 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import format_matches_for_gpt
-from utils import normalize_gender
+from utils import format_matches_for_gpt, normalize_gender
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3
@@ -89,16 +88,15 @@ def normalize_phone(phone):
         digits = "1" + digits
     return "+" + digits
 
-def normalize_gender(g):
-    if not g: return ""
-    g = g.lower().strip()
-    if g in ["male", "m"]:
-        return "male"
-    elif g in ["female", "f"]:
-        return "female"
-    return g  # return as-is if unexpected
-
-# In normalize_participant_data:
+# Optional fallback definition only if not imported
+# def normalize_gender(g):
+#     if not g: return ""
+#     g = g.lower().strip()
+#     if g in ["male", "m"]:
+#         return "male"
+#     elif g in ["female", "f"]:
+#         return "female"
+#     return g
 
 def calculate_age(dob_str):
     if not dob_str.strip():
@@ -155,17 +153,6 @@ def flatten_dict(d, parent_key='', sep=' - '):
             items[new_key] = v
     return items
 
-def normalize_participant_data(raw):
-    key_map = {k.lower(): k for k in raw}
-
-    
-    def get_any(*keys):
-        for key in keys:
-            match = next((raw[v] for k, v in key_map.items() if key.lower() in k), None)
-            if match:
-                return match
-        return ""
-
     raw["dob"] = raw.get("dob") or get_any("date of birth")
     raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
     raw["zip"] = raw.get("zip") or get_any("zip", "zip code")
@@ -173,11 +160,11 @@ def normalize_participant_data(raw):
     raw_gender = raw.get("gender") or get_any("gender", "gender identity")
     raw["gender"] = normalize_gender(raw_gender)
 
-    # Safely assign city and state first
+    # Safely assign city/state first
     raw["city"] = raw.get("city") or get_any("city")
     raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
-    # Enrich from ZIP if still missing
+    # Enrich from ZIP if missing city/state
     if (not raw["city"] or not raw["state"]) and raw.get("zip"):
         try:
             loc = geolocator.geocode(raw["zip"])
@@ -188,23 +175,22 @@ def normalize_participant_data(raw):
         except Exception as e:
             print("⚠️ ZIP enrichment failed:", e)
 
-    # Final fallback to prevent crash
+    # Final fallback defaults
     raw["city"] = raw.get("city") or "Unknown"
     raw["state"] = raw.get("state") or "Unknown"
 
-    # Compose location string after all enrichment
+    # Compose enriched location
     raw["location"] = f"{raw['city']}, {raw['state']}"
 
+    # Normalize conditions
     conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
-    if isinstance(conds, list):
-        raw["diagnosis_history"] = ", ".join(conds)
-    else:
-        raw["diagnosis_history"] = conds
+    raw["diagnosis_history"] = ", ".join(conds) if isinstance(conds, list) else conds
 
+    # Age, coordinates
     raw["age"] = calculate_age(raw["dob"])
-    raw["location"] = f"{raw['city']}, {raw['state']}"
     raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
+    # Extra filters
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
     raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine therapy", "ketamine use")
@@ -213,7 +199,7 @@ def normalize_participant_data(raw):
         raw["pregnant"] = "No"
 
     return raw
-
+    
 @app.post("/chat")
 async def chat_handler(request: Request):
     body = await request.json()
@@ -253,8 +239,16 @@ async def chat_handler(request: Request):
             if q_set:
                 questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set))
 
-        del study_selection_stage[session_id]
+        if any("river" in m["study"]["study_title"].lower() for m in selected):
+            river_pending_confirmation[session_id] = last_participant_data.get(session_id, {})
+            return {
+                "reply": (
+                    "🌊 Great choice! The River Program offers at-home ketamine therapy via telehealth.\n\n"
+                    "**Would you like to continue with this one? (Yes or No)**"
+                )
+            }
 
+        del study_selection_stage[session_id]
         return {
             "reply": (
                 "Great choice! Just a few quick questions to confirm your fit for these studies:\n\n"
@@ -283,6 +277,7 @@ async def chat_handler(request: Request):
         raw_json = match.group()
         print("🔍 Raw JSON extracted:", raw_json)
 
+        from utils import flatten_dict, normalize_participant_data
         flattened_raw = flatten_dict(json.loads(raw_json))
         participant_data = normalize_participant_data(flattened_raw)
 
@@ -296,6 +291,23 @@ async def chat_handler(request: Request):
                     "- " + "\n- ".join(missing_fields).replace("_", " ").title()
                 )
             }
+
+        with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
+            all_studies = json.load(f)
+
+        print("🧠 Matching studies using participant data:", participant_data)
+        matches = match_studies(participant_data, all_studies)
+        print("📋 Found matches:", [m["study"]["study_title"] for m in matches])
+
+        if not matches:
+            last_participant_data[session_id] = participant_data
+            push_to_monday(participant_data)
+            return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
+
+        # Store for River confirmation
+        last_participant_data[session_id] = participant_data
+        study_selection_stage[session_id] = {"matches": matches}
+        push_to_monday(participant_data)
 
         if session_id not in river_pending_confirmation and is_eligible_for_river(participant_data):
             river_pending_confirmation[session_id] = participant_data
@@ -318,22 +330,6 @@ async def chat_handler(request: Request):
                 )
             }
 
-        with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
-            all_studies = json.load(f)
-            
-        print("🧠 Matching studies using participant data:", participant_data)
-        matches = match_studies(participant_data, all_studies)
-        print("📋 Found matches:", [m["study"]["study_title"] for m in matches])
-
-        if not matches:
-            last_participant_data[session_id] = participant_data
-            push_to_monday(participant_data)
-            return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
-
-        push_to_monday(participant_data)
-        last_participant_data[session_id] = participant_data
-        study_selection_stage[session_id] = {"matches": matches}
-
         reply_text = format_matches_for_gpt(matches)
         print("✅ FORMATTED MATCHES:\n", reply_text)
 
@@ -346,4 +342,3 @@ async def chat_handler(request: Request):
         print("❌ Exception while processing GPT match JSON:", str(e))
         print("📨 GPT message was:", gpt_message)
         return {"reply": "We encountered an error processing your info. Please try again or contact support."}
-    
