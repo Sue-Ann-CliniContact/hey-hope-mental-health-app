@@ -342,6 +342,18 @@ async def chat_handler(request: Request):
             except Exception as e:
                 print("❌ River processing failed:", str(e))
                 return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
+                
+        participant_data = normalize_participant_data(json.loads(raw_json))
+        last_participant_data[session_id] = participant_data
+
+        # Match studies
+        from tagged_indexed_studies_heyhope_final import all_studies  # or however you're loading the studies
+        matches = match_studies(participant_data, all_studies)
+        study_selection_stage[session_id] = {"matches": matches}
+
+        return {
+            "reply": format_matches_for_gpt(matches)
+        }
     except Exception as e:
         print("❌ JSON parsing failed:", str(e))
         return {"reply": "Sorry, I couldn’t understand your details. Can you try again briefly?"}
