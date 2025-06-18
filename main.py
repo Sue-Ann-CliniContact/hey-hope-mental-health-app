@@ -261,7 +261,7 @@ async def chat_handler(request: Request):
             q_set = [tag_question_map[tag] for tag in tags if tag in tag_question_map]
             if q_set:
                 questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set))
-            if "river" in title.lower():
+            if "river nonprofit ketamine trial" == title.strip().lower():
                 river_included = True
 
         if river_included:
@@ -317,7 +317,7 @@ async def chat_handler(request: Request):
                 participant_data.update(river_answers)
 
                 participant_data = normalize_participant_data(participant_data)
-                
+
                 # Re-check required fields
                 required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
                 missing_fields = [k for k in required_fields if not participant_data.get(k)]
@@ -325,8 +325,8 @@ async def chat_handler(request: Request):
                     print("⚠️ Missing fields in River follow-up:", missing_fields)
                     return {
                         "reply": (
-                        "Thanks! Just one last step before we confirm your eligibility:\n\n" +
-                        "- " + "\n- ".join(missing_fields).replace("_", " ").title()
+                            "Thanks! Just one last step before we confirm your eligibility:\n\n" +
+                            "- " + "\n- ".join(missing_fields).replace("_", " ").title()
                         )
                     }
 
@@ -339,6 +339,9 @@ async def chat_handler(request: Request):
                 return {
                     "reply": "Thanks! You’re all set for the River Program. A coordinator will reach out to you soon."
                 }
+            except Exception as e:
+                print("❌ River processing failed:", str(e))
+                return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
     except Exception as e:
-        print("❌ River processing failed:", str(e))
-        return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
+        print("❌ JSON parsing failed:", str(e))
+        return {"reply": "Sorry, I couldn’t understand your details. Can you try again briefly?"}
