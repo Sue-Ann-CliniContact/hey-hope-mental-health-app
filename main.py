@@ -217,9 +217,9 @@ async def chat_handler(request: Request):
 
     if session_id in river_pending_confirmation and user_input.strip().lower() in ["yes", "yeah", "sure"]:
         river_qs = [
-            "Are you currently receiving any treatment for your mental health conditions?",
-            "Have you ever participated in a clinical trial before?",
-            "Are you comfortable with regular check-ups and follow-ups as part of the study?"
+            "Have you been diagnosed with bipolar II disorder?",
+            "Do you have uncontrolled high blood pressure?",
+            "Have you used ketamine recreationally in the past?"
         ]
         study_selection_stage.pop(session_id, None)
         del river_pending_confirmation[session_id]
@@ -302,6 +302,22 @@ async def chat_handler(request: Request):
     try:
         raw_json = match.group()
         print("🔍 Raw JSON extracted:", raw_json)
+
+        # ✅ Special handler if this is a River follow-up
+        if session_id in river_pending_confirmation:
+            try:
+                river_answers = flatten_dict(json.loads(raw_json))
+                participant_data = river_pending_confirmation.pop(session_id)
+                river_answers = {k.lower(): v for k, v in river_answers.items()}
+                participant_data.update(river_answers)
+                last_participant_data[session_id] = participant_data
+                push_to_monday(participant_data)  # optional
+                return {
+                    "reply": "Thanks! You’re all set for the River Program. A coordinator will reach out to you soon."
+                }
+            except Exception as e:
+                print("⚠️ Failed to process River follow-up answers:", str(e))
+                return {"reply": "Sorry, I couldn’t process that. Could you answer again briefly?"}   
 
         flattened_raw = flatten_dict(json.loads(raw_json))
         participant_data = normalize_participant_data(flattened_raw)
