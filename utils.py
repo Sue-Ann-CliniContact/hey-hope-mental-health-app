@@ -59,49 +59,6 @@ def format_matches_for_gpt(matches):
         else:
             return "📌 Possible Match"
 
-def classify_location(participant_coords, study=None, participant_state=None):
-    try:
-        if not study:
-            return "Other"
-
-        title = study.get("study_title", "").strip().lower()
-        tags = [t.lower().strip() for t in study.get("tags", [])]
-        study_coords = study.get("coordinates")
-        site_coords_list = [
-            tuple(s.get("coordinates", []))
-            for s in study.get("matching_site_contacts", [])
-            if s.get("coordinates") and len(s["coordinates"]) == 2
-        ]
-
-        # ✅ Special case for River
-        if title == "river nonprofit ketamine trial":
-            if participant_state and participant_state.upper() in [s.upper() for s in study.get("states", [])]:
-                return "Near You"
-            return "Other"
-
-        # ✅ Site match
-        for sc in site_coords_list:
-            if participant_coords and geodesic(participant_coords, sc).miles <= 100:
-                return "Near You"
-
-        # ✅ Study-level coordinate fallback
-        if participant_coords and study_coords and len(study_coords) == 2:
-            if geodesic(participant_coords, tuple(study_coords)).miles <= 100:
-                return "Near You"
-            elif geodesic(participant_coords, tuple(study_coords)).miles <= 1500:
-                return "National"
-
-        # ✅ State match fallback
-        if participant_state:
-            states = [s.upper() for s in study.get("states", [])]
-            if participant_state.upper() in states:
-                return "Near You"
-
-    except Exception as e:
-        print("⚠️ Location classification error:", e)
-
-    return "Other"
-
     grouped = {"Near You": [], "National": [], "Other": []}
     for match in matches:
         study = match.get("study", {})
@@ -109,6 +66,11 @@ def classify_location(participant_coords, study=None, participant_state=None):
         reasons = match.get("match_reason", [])
         participant_state = study.get("participant_state")
         participant_coords = study.get("participant_coords")  # already injected in match_studies
+
+        # Fix: Ensure 'sites' field exists and is populated
+        if "sites" not in study:
+            study["sites"] = study.get("site_locations_and_contacts", [])
+
         tag = classify_location(participant_coords, study=study, participant_state=participant_state)
 
         matched_includes = [r for r in reasons if "Matches include" in r]
@@ -183,3 +145,43 @@ def classify_location(participant_coords, study=None, participant_state=None):
         format_group("National", grouped["National"], global_index) +
         format_group("Other", grouped["Other"], global_index)
     ).strip()
+
+def classify_location(participant_coords, study=None, participant_state=None):
+    try:
+        if not study:
+            return "Other"
+
+        title = study.get("study_title", "").strip().lower()
+        tags = [t.lower().strip() for t in study.get("tags", [])]
+        study_coords = study.get("coordinates")
+        site_coords_list = [
+            tuple((s.get("latitude"), s.get("longitude")))
+            for s in study.get("sites", [])
+            if s.get("latitude") is not None and s.get("longitude") is not None
+        ]
+
+        # ✅ Special case for River
+        if title == "river nonprofit ketamine trial":
+            if participant_state and participant_state.upper() in [s.upper() for s in study.get("states", [])]:
+                return "Near You"
+            return "Other"
+
+        for sc in site_coords_list:
+            if participant_coords and geodesic(participant_coords, sc).miles <= 100:
+                return "Near You"
+
+        if participant_coords and study_coords and len(study_coords) == 2:
+            if geodesic(participant_coords, tuple(study_coords)).miles <= 100:
+                return "Near You"
+            elif geodesic(participant_coords, tuple(study_coords)).miles <= 1500:
+                return "National"
+
+        if participant_state:
+            states = [s.upper() for s in study.get("states", [])]
+            if participant_state.upper() in states:
+                return "Near You"
+
+    except Exception as e:
+        print("⚠️ Location classification error:", e)
+
+    return "Other"
