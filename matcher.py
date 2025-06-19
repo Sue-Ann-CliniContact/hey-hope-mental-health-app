@@ -69,7 +69,7 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
 
 def get_matching_sites(study, participant_city, participant_state, participant_zip):
     matched = []
-    for site in study.get("site_locations_and_contacts", []):
+    for site in study.get("sites", []):
         match_city = site.get("city", "").strip().lower() == participant_city.strip().lower()
         match_state = site.get("state", "").strip().lower() == participant_state.strip().lower()
         match_zip = site.get("zip", "").strip() == participant_zip.strip()
@@ -82,7 +82,7 @@ def get_matching_sites_by_coords(study, participant_coords, fallback_state=None,
         return []
 
     matched_sites = []
-    for site in study.get("site_locations_and_contacts", []):
+    for site in study.get("sites", []):
         site_coords = site.get("coordinates")
         if site_coords and isinstance(site_coords, list) and len(site_coords) == 2:
             try:
@@ -119,7 +119,8 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     coords = pd.get("coordinates")
     age = pd.get("age")
     gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
-    participant_state = pd.get("state", "").upper()
+    participant_state = pd.get("state", "") or pd.get("State", "")
+    participant_state = participant_state.upper()
     zip_code = pd.get("zip", "")
 
     conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
@@ -146,43 +147,40 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     for study in all_studies:
         title = study.get("study_title", "")
         tags = [normalize(tag) for tag in study.get("tags", [])]
+        site_locations = study.get("sites", [])
 
         if exclude_river and "custom_river_program" in tags:
             continue
 
-# 🧭 Location matching logic
-        site_locations = study.get("site_locations_and_contacts", [])
         matching_sites = [
             s for s in site_locations
             if is_site_nearby(s, coords)
         ]
-
+        has_matching_site = bool(matching_sites)
         is_telehealth = "include_telehealth" in tags
         has_any_sites = bool(site_locations)
-        has_matching_site = bool(matching_sites)
 
-        # ➕ Fallback: if no matching sites, check if study-level coords are within range
+        # ➕ Fallback 1: study-level coordinates
         if not has_matching_site and not is_telehealth:
             study_coords = study.get("coordinates")
             if is_study_location_near(coords, study_coords):
                 has_matching_site = True
-                matching_sites = []  # Use study-level only
+                matching_sites = []  # Use study-level, not site-level
                 print(f"📍 Using fallback study-level match for: {title}")
 
-        # ➕ Final fallback: state-level match if no coords
+        # ➕ Fallback 2: state-level match
         if not has_matching_site and not is_telehealth:
             study_states = [s.upper() for s in study.get("states", [])]
-            if participant_state and participant_state.upper() in study_states:
+            if participant_state and participant_state in study_states:
                 has_matching_site = True
                 matching_sites = []  # Still fallback
                 print(f"📍 State-level fallback used for: {title}")
 
-        # ❌ Skip study if no matching site or study location
-        if has_any_sites and not has_matching_site and not is_telehealth:
+        study["matching_site_contacts"] = matching_sites
+
+        if not has_matching_site and not is_telehealth:
             print(f"⛔️ Skipping {title}: no nearby site or study location match")
             continue
-
-        study["matching_site_contacts"] = matching_sites
 
         if not passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
             continue
@@ -209,14 +207,11 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             score += 3
             reasons.append("🌊 Prioritized River Program")
 
-        study["matching_site_contacts"] = matching_sites
         eligible_studies.append({
             "study": study,
             "match_score": max(1, min(score, 10)),
             "match_reason": reasons
         })
-
-    return eligible_studies
 
     sorted_matches = sorted(
         eligible_studies,

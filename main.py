@@ -409,6 +409,8 @@ async def chat_handler(request: Request):
         # Match studies
         with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
             all_studies = json.load(f)
+        for study in all_studies:
+            study["sites"] = study.get("site_locations_and_contacts", [])
         matches = match_studies(participant_data, all_studies)
         study_selection_stage[session_id] = {"matches": matches}
 
