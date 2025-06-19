@@ -98,7 +98,10 @@ def format_matches_for_gpt(matches):
         formatted = {
             "study_title": study.get("study_title", "Untitled"),
             "link": study.get("study_link", ""),
-            "locations": study.get("location", "Not specified"),
+            "locations": ", ".join(
+                ", ".join(filter(None, [s.get("city", ""), s.get("state", "")]))
+                for s in study.get("matching_site_contacts", [])
+            ) or study.get("location", "Not specified"),
             "summary": study.get("summary", ""),
             "eligibility": study.get("eligibility_text", ""),
             "contacts": format_contact(study),

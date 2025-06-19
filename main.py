@@ -126,12 +126,19 @@ def contains_red_flag(text):
 
 def get_coordinates(city, state, zip_code):
     try:
-        query = f"{city}, {state} {zip_code}".strip()
-        loc = geolocator.geocode(query)
+        if zip_code:
+            loc = geolocator.geocode({"postalcode": zip_code, "country": "US"})
+        elif city and state:
+            loc = geolocator.geocode(f"{city}, {state}")
+        elif state:
+            loc = geolocator.geocode(state)
+        else:
+            return None
+
         if loc:
             return (loc.latitude, loc.longitude)
     except Exception as e:
-        print("⚠️ Failed to geocode location:", query, "→", str(e))
+        print("⚠️ Failed to geocode location:", f"{city}, {state}, {zip_code}", "→", str(e))
     return None
 
 def is_eligible_for_river(participant):
