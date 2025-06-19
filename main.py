@@ -186,7 +186,7 @@ def normalize_participant_data(raw):
 
     if (not raw["city"] or not raw["state"]) and raw.get("zip"):
         try:
-            loc = geolocator.geocode({"postalcode": raw["zip"], "country": "US"})
+            loc = geolocator.geocode(f"{raw['zip']}, USA")
             if loc and hasattr(loc, 'raw'):
                 address = loc.raw.get("address", {})
                 print(f"📦 Geocoder raw address: {address}")  # Debug print
