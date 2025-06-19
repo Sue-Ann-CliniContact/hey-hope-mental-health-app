@@ -255,7 +255,24 @@ async def chat_handler(request: Request):
             "require_diabetes": "Do you have diabetes?",
             "exclude_bipolar": "Have you been diagnosed with bipolar disorder (this study may exclude it)?",
             "exclude_pregnant": "Are you currently pregnant or breastfeeding?",
-            "require_veteran": "Are you a U.S. military veteran?"
+            "require_veteran": "Are you a U.S. military veteran?",
+            "include_depression": "Do you have a history of depression?",
+            "include_anxiety": "Do you experience anxiety?",
+            "include_ptsd": "Have you been diagnosed with PTSD?",
+            "include_veterans": "Are you a U.S. military veteran?",
+            "include_telehealth": "Would you prefer telehealth (remote) options?",
+            "include_seniors": "Are you over the age of 60?",
+            "include_pregnancy": "Are you currently pregnant or breastfeeding?",
+            "include_alcohol": "Do you currently consume alcohol or have a history of alcohol use?",
+            "include_substance use": "Do you have a history of substance use?",
+            "include_children": "Is this study for a child under your care?",
+            "include_adults": "Are you over 18 years old?",
+            "include_adhd": "Have you been diagnosed with ADHD?",
+            "include_cancer": "Do you have a history of cancer?",
+            "include_female only": "Are you female?",
+            "include_male only": "Are you male?",
+            "include_lupus": "Have you been diagnosed with lupus?",
+            "include_pms": "Do you experience premenstrual symptoms?"    
         }
 
         river_included = False
@@ -264,10 +281,12 @@ async def chat_handler(request: Request):
             tags = match["study"].get("tags", [])
             q_set = [tag_question_map[tag] for tag in tags if tag in tag_question_map]
             if q_set:
-                questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set))
+                questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set[:3]))
             if "river nonprofit ketamine trial" == title.strip().lower():
                 river_included = True
 
+        study_selection_stage[session_id]["selected_titles"] = [m["study"]["study_title"] for m in selected]
+        
         if river_included:
             river_pending_confirmation[session_id] = last_participant_data.get(session_id, {})
             return {
@@ -276,14 +295,6 @@ async def chat_handler(request: Request):
                     "**Would you like to continue with this one? (Yes or No)**"
                 )
             }
-
-        del study_selection_stage[session_id]
-        return {
-            "reply": (
-                "Great choice! Just a few quick questions to confirm your fit for these studies:\n\n"
-                + "\n\n".join(questions)
-            )
-        }
 
     if session_id not in chat_histories:
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -350,8 +361,32 @@ async def chat_handler(request: Request):
         participant_data = normalize_participant_data(json.loads(raw_json))
         last_participant_data[session_id] = participant_data
 
+        # 🔁 If previously selected studies exist, re-check eligibility after new answers
+        if "selected_titles" in study_selection_stage.get(session_id, {}):
+            participant_data = normalize_participant_data(json.loads(raw_json))
+            last_participant_data[session_id] = participant_data
+            push_to_monday(participant_data)
+
+            with open("indexed_heyhope_filtered.json", "r") as f:
+                all_studies = json.load(f)
+
+            all_matches = match_studies(participant_data, all_studies)
+            selected_titles = study_selection_stage[session_id].get("selected_titles", [])
+            confirmed_matches = [m for m in all_matches if m["study"].get("study_title") in selected_titles]
+            del study_selection_stage[session_id]
+
+            if not confirmed_matches:
+                return {"reply": "Thanks! Unfortunately, based on your responses, none of your selected studies seem to be a match. Want to see other options?"}
+
+            return {
+                "reply": (
+                    "Thanks! Based on your answers, you're a confirmed match for the following studies:\n\n" +
+                    format_matches_for_gpt(confirmed_matches)
+                )
+            }        
+        
         # Match studies
-        with open("tagged_indexed_studies_heyhope_final.json", "r") as f:
+        with open("indexed_heyhope_filtered.json", "r") as f:
             all_studies = json.load(f)
         matches = match_studies(participant_data, all_studies)
         study_selection_stage[session_id] = {"matches": matches}

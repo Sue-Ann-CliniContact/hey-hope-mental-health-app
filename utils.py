@@ -27,12 +27,25 @@ def normalize_gender(g):
     return g
 
 def format_contact(study):
-    primary = study.get("contact_name", "")
-    email = study.get("contact_email", "")
-    phone = study.get("contact_phone", "")
-    if primary or email or phone:
-        return f"{primary} | {email} | {phone}".strip(" |")
-    return "Not provided"
+    matching_sites = study.get("matching_site_contacts", [])
+    if matching_sites:
+        formatted = []
+        for site in matching_sites:
+            parts = [
+                site.get("contact_name", ""),
+                site.get("contact_email", ""),
+                site.get("contact_phone", "")
+            ]
+            formatted.append(" | ".join(p for p in parts if p))
+        return "\n".join(formatted)
+    # Fallback to study-level
+    contact = study.get("study_contact", {})
+    parts = [
+        contact.get("name", ""),
+        contact.get("email", ""),
+        contact.get("phone", "")
+    ]
+    return " | ".join(p for p in parts if p) or "Not provided"
 
 def format_matches_for_gpt(matches):
     if not matches:

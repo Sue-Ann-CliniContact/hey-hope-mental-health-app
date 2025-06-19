@@ -67,6 +67,17 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
 
     return True
 
+def get_matching_sites(study, participant_city, participant_state, participant_zip):
+    matched = []
+    for site in study.get("site_locations_and_contacts", []):
+        match_city = site.get("city", "").strip().lower() == participant_city.strip().lower()
+        match_state = site.get("state", "").strip().lower() == participant_state.strip().lower()
+        match_zip = site.get("zip", "").strip() == participant_zip.strip()
+
+        if match_city or match_state or match_zip:
+            matched.append(site)
+    return matched
+
 def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
     coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
@@ -76,10 +87,8 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
     participant_state = pd.get("state", "").upper()
 
-    # Add normalized condition tags
+    # Tags
     participant_tags = set(normalize(c) for c in main_conditions)
-
-    participant_tags = set(normalize(tag) for tag in main_conditions)
     if gender:
         participant_tags.add(gender)
 
@@ -95,15 +104,35 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         participant_tags.add("veteran")
 
     print("👤 Gender:", gender)
-    print("📌 Participant Tags:", participant_tags)
-
+    print("📌 Participant Tags:", participant_tags) 
+    
     eligible_studies = []
+
     for study in all_studies:
         title = study.get("study_title", "")
         tags = [normalize(tag) for tag in study.get("tags", [])]
 
         if exclude_river and "river program" in title.lower():
             continue
+
+        # Location matching
+        site_locations = study.get("site_locations_and_contacts", [])
+        matching_sites = get_matching_sites(study, pd.get("city", ""), pd.get("state", ""), pd.get("zip", ""))
+
+        has_matching_site = bool(matching_sites)
+        has_any_sites = bool(site_locations)
+        is_telehealth = "include_telehealth" in tags
+
+        if has_any_sites and not has_matching_site and not is_telehealth:
+            continue
+
+        if not has_any_sites:
+            # Fallback to state-level match
+            study_states = [s.lower() for s in study.get("states", [])]
+            if participant_state.lower() not in study_states and not is_telehealth:
+                continue
+
+        study["matching_site_contacts"] = matching_sites
 
         if passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
             score = 5
@@ -122,7 +151,6 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                     score -= 2
                 if tag.startswith("include_") and (tag[8:] in participant_tags):
                     reasons.append(f"✅ Matches include: {tag[8:]}")
-                    score += 1
 
             if "river" in title.lower():
                 score += 3
@@ -133,6 +161,8 @@ def match_studies(participant_data, all_studies, exclude_river=False):
                 "match_score": max(1, min(score, 10)),
                 "match_reason": reasons
             })
+
+    return eligible_studies
 
     sorted_matches = sorted(
         eligible_studies,
