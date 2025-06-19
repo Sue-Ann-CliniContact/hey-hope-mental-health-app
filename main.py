@@ -182,8 +182,9 @@ def normalize_participant_data(raw):
             loc = geolocator.geocode({"postalcode": raw["zip"], "country": "US"})
             if loc and hasattr(loc, 'raw'):
                 address = loc.raw.get("address", {})
-                raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village") or ""
-                state_long = address.get("state", "")
+                print(f"📦 Geocoder raw address: {address}")  # Debug print
+                raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village") or "Unknown"
+                state_long = address.get("state") or address.get("state_district") or ""
                 raw["state"] = raw["state"] or normalize_state(state_long)
                 print(f"✅ ZIP enrichment resolved to {raw['city']}, {raw['state']}")
             else:
