@@ -55,7 +55,7 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
         if participant_state.upper() not in [s.upper() for s in study["states"]]:
             return False
 
-    if coords and study.get("coordinates"):
+    if coords and study.get("coordinates") and not study.get("matching_site_contacts"):
         try:
             distance = geodesic(coords, study["coordinates"]).miles
             if distance > 100:
@@ -69,10 +69,12 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
 
 def get_matching_sites(study, participant_city, participant_state, participant_zip):
     matched = []
+    zip_b = participant_zip.strip().split("-")[0]
     for site in study.get("site_locations_and_contacts", []):
+        zip_a = site.get("zip", "").strip().split("-")[0]
         match_city = site.get("city", "").strip().lower() == participant_city.strip().lower()
         match_state = site.get("state", "").strip().lower() == participant_state.strip().lower()
-        match_zip = site.get("zip", "").strip() == participant_zip.strip()
+        match_zip = zip_a == zip_b
 
         if match_city or match_state or match_zip:
             matched.append(site)
