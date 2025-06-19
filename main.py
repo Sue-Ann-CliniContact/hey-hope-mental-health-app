@@ -372,7 +372,7 @@ async def chat_handler(request: Request):
             last_participant_data[session_id] = participant_data
             push_to_monday(participant_data)
 
-            with open("indexed_heyhope_filtered.json", "r") as f:
+            with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
                 all_studies = json.load(f)
 
             all_matches = match_studies(participant_data, all_studies)
@@ -391,7 +391,7 @@ async def chat_handler(request: Request):
             }        
         
         # Match studies
-        with open("indexed_heyhope_filtered.json", "r") as f:
+        with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
             all_studies = json.load(f)
         matches = match_studies(participant_data, all_studies)
         study_selection_stage[session_id] = {"matches": matches}
