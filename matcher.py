@@ -82,15 +82,16 @@ def get_matching_sites(study, participant_city, participant_state, participant_z
 
 def match_studies(participant_data, all_studies, exclude_river=False):
     pd = participant_data
-    coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
     age = pd.get("age")
-    gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
+    gender = normalize_gender(pd.get("gender"))
     conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
     main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
-    participant_state = pd.get("state", "").upper()
+    participant_state = normalize(pd.get("state", ""))
+    participant_zip = normalize(pd.get("zip", ""))
+    participant_city = normalize(pd.get("city", ""))
+    coords = pd.get("coordinates")  # can still be None
 
-    # Tags
-    participant_tags = set(normalize(c) for c in main_conditions)
+    participant_tags = set(main_conditions)
     if gender:
         participant_tags.add(gender)
 
@@ -105,64 +106,66 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     if normalize(pd.get("U.S. Veteran", "") or pd.get("veteran", "")) == "yes":
         participant_tags.add("veteran")
 
-    print("👤 Gender:", gender)
-    print("📌 Participant Tags:", participant_tags) 
-    
     eligible_studies = []
 
     for study in all_studies:
         title = study.get("study_title", "")
         tags = [normalize(tag) for tag in study.get("tags", [])]
+        states = [normalize(s) for s in study.get("states", [])]
+        sites = study.get("site_locations_and_contacts", [])
 
-        if exclude_river and "river program" in title.lower():
+        if exclude_river and "custom_river_program" in tags:
             continue
 
-        # Location matching
-        site_locations = study.get("site_locations_and_contacts", [])
-        matching_sites = get_matching_sites(study, pd.get("city", ""), pd.get("state", ""), pd.get("zip", ""))
+        matching_sites = []
+        for site in sites:
+            match_zip = normalize(site.get("zip", "")) == participant_zip
+            match_city = normalize(site.get("city", "")) == participant_city
+            match_state = normalize(site.get("state", "")) == participant_state
+            if match_zip or match_city or match_state:
+                matching_sites.append(site)
 
-        has_matching_site = bool(matching_sites)
-        has_any_sites = bool(site_locations)
         is_telehealth = "include_telehealth" in tags
+        has_site_match = bool(matching_sites)
+        has_any_sites = bool(sites)
 
-        if has_any_sites and not has_matching_site and not is_telehealth:
+        # 🧠 Skip if the study has sites but none match the user's location and it's not telehealth
+        if has_any_sites and not has_site_match and not is_telehealth:
             continue
 
-        if not has_any_sites:
-            # Fallback to state-level match
-            study_states = [s.lower() for s in study.get("states", [])]
-            if participant_state.lower() not in study_states and not is_telehealth:
-                continue
+        # 🪄 If no site locations, check general state fallback
+        if not has_any_sites and participant_state and participant_state not in states and not is_telehealth:
+            continue
+
+        # Run custom tag filter
+        if not passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
+            continue
+
+        # Scoring
+        score = 5
+        reasons = []
+
+        for tag in tags:
+            if tag.startswith("exclude_") and tag[8:] in participant_tags:
+                reasons.append(f"❌ Excluded due to: {tag[8:]}")
+                score -= 2
+            if tag.startswith("require_") and tag[8:] not in participant_tags:
+                reasons.append(f"⚠️ Missing required: {tag[8:]}")
+                score -= 2
+            if tag.startswith("include_") and tag[8:] in participant_tags:
+                reasons.append(f"✅ Matches include: {tag[8:]}")
+                score += 1
+
+        if "highlight_river_priority" in tags:
+            reasons.append("🌊 Prioritized River Program")
+            score += 3
 
         study["matching_site_contacts"] = matching_sites
-
-        if passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
-            score = 5
-            reasons = []
-
-            if not any(f"include_{pt}" in tags or pt in tags for pt in participant_tags):
-                score -= 3
-                reasons.append("⚠️ Main condition may not match")
-
-            for tag in tags:
-                if tag.startswith("exclude_") and tag[8:] in participant_tags:
-                    reasons.append(f"❌ Excluded due to: {tag[8:]}")
-                    score -= 2
-                if tag.startswith("require_") and tag[8:] not in participant_tags:
-                    reasons.append(f"⚠️ Missing required: {tag[8:]}")
-                    score -= 2
-                if tag.startswith("include_") and (tag[8:] in participant_tags):
-                    reasons.append(f"✅ Matches include: {tag[8:]}")
-
-            if "river" in title.lower():
-                score += 3
-                reasons.append("🌊 Prioritized River Program")
-
-            eligible_studies.append({
-                "study": study,
-                "match_score": max(1, min(score, 10)),
-                "match_reason": reasons
-            })
+        eligible_studies.append({
+            "study": study,
+            "match_score": max(1, min(score, 10)),
+            "match_reason": reasons
+        })
 
     return eligible_studies
 
