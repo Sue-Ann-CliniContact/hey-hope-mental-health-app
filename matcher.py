@@ -129,13 +129,16 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         has_site_match = bool(matching_sites)
         has_any_sites = bool(sites)
 
-        # 🧠 Skip if the study has sites but none match the user's location and it's not telehealth
-        if has_any_sites and not has_site_match and not is_telehealth:
-            continue
-
-        # 🪄 If no site locations, check general state fallback
-        if not has_any_sites and participant_state and participant_state not in states and not is_telehealth:
-            continue
+        # 🧠 Location requirement logic
+        if has_any_sites:
+            if not has_site_match:
+                if not is_telehealth:
+                    # ⛔️ Site exists but not matching and not telehealth — skip
+                    continue
+        else:
+            if participant_state and participant_state not in states and not is_telehealth:
+                print(f"⛔️ Skipped {title} — participant_state {participant_state} not in {states}")
+                continue
 
         # Run custom tag filter
         if not passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
