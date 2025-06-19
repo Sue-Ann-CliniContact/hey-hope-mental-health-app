@@ -178,14 +178,18 @@ def normalize_participant_data(raw):
     raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
     if (not raw["city"] or not raw["state"]) and raw.get("zip"):
-        try:
-            loc = geolocator.geocode(raw["zip"])
-            if loc and hasattr(loc, 'raw'):
-                address = loc.raw.get("address", {})
-                raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village")
-                raw["state"] = raw["state"] or normalize_state(address.get("state", ""))
-        except Exception as e:
-            print("⚠️ ZIP enrichment failed:", e)
+    try:
+        loc = geolocator.geocode({"postalcode": raw["zip"], "country": "US"})
+        if loc and hasattr(loc, 'raw'):
+            address = loc.raw.get("address", {})
+            raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village") or ""
+            state_long = address.get("state", "")
+            raw["state"] = raw["state"] or normalize_state(state_long)
+            print(f"✅ ZIP enrichment resolved to {raw['city']}, {raw['state']}")
+        else:
+            print("⚠️ No geocoding result found for ZIP:", raw["zip"])
+    except Exception as e:
+        print("⚠️ ZIP enrichment error:", e)
 
     raw["city"] = raw.get("city") or "Unknown"
     raw["state"] = raw.get("state") or "Unknown"
