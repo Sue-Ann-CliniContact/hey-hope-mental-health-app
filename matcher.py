@@ -150,33 +150,39 @@ def match_studies(participant_data, all_studies, exclude_river=False):
         if exclude_river and "custom_river_program" in tags:
             continue
 
-        # 🧭 Location matching logic
+# 🧭 Location matching logic
         site_locations = study.get("site_locations_and_contacts", [])
         matching_sites = [
             s for s in site_locations
             if is_site_nearby(s, coords)
         ]
 
-        has_matching_site = bool(matching_sites)
-        has_any_sites = bool(site_locations)
         is_telehealth = "include_telehealth" in tags
+        has_any_sites = bool(site_locations)
+        has_matching_site = bool(matching_sites)
 
-        # ➕ If no matching sites, check fallback: same state
+        # ➕ Fallback: if no matching sites, check if study-level coords are within range
         if not has_matching_site and not is_telehealth:
-            matching_sites = [
-                s for s in site_locations
-                if s.get("state", "").strip().upper() == participant_state
-            ]
-            has_matching_site = bool(matching_sites)
-
-        # ➕ If no sites but state listed at study level, allow fallback
-        if not has_any_sites and study.get("states"):
-            study_states = [s.upper() for s in study["states"]]
-            if participant_state in study_states:
+            study_coords = study.get("coordinates")
+            if is_study_location_near(coords, study_coords):
                 has_matching_site = True
+                matching_sites = []  # Use study-level only
+                print(f"📍 Using fallback study-level match for: {title}")
 
+        # ➕ Final fallback: state-level match if no coords
+        if not has_matching_site and not is_telehealth:
+            study_states = [s.upper() for s in study.get("states", [])]
+            if participant_state and participant_state.upper() in study_states:
+                has_matching_site = True
+                matching_sites = []  # Still fallback
+                print(f"📍 State-level fallback used for: {title}")
+
+        # ❌ Skip study if no matching site or study location
         if has_any_sites and not has_matching_site and not is_telehealth:
-            continue  # Skip if no good match
+            print(f"⛔️ Skipping {title}: no nearby site or study location match")
+            continue
+
+        study["matching_site_contacts"] = matching_sites
 
         if not passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
             continue

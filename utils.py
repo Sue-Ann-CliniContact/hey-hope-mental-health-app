@@ -59,29 +59,48 @@ def format_matches_for_gpt(matches):
         else:
             return "📌 Possible Match"
 
-    def classify_location(coords, study=None, participant_state=None):
-        # Special case: River should not be national
-        if study:
-            title = study.get("study_title", "").strip().lower()
-            states = study.get("states", [])
+def classify_location(participant_coords, study=None, participant_state=None):
+    try:
+        if not study:
+            return "Other"
 
-            if "river nonprofit ketamine trial" == title:
-                return "Other" if participant_state not in [s.upper() for s in states] else "Near You"
+        title = study.get("study_title", "").strip().lower()
+        tags = [t.lower().strip() for t in study.get("tags", [])]
+        study_coords = study.get("coordinates")
+        site_coords_list = [
+            tuple(s.get("coordinates", []))
+            for s in study.get("matching_site_contacts", [])
+            if s.get("coordinates") and len(s["coordinates"]) == 2
+        ]
 
-            if states and participant_state and participant_state.upper() in [s.upper() for s in states]:
+        # ✅ Special case for River
+        if title == "river nonprofit ketamine trial":
+            if participant_state and participant_state.upper() in [s.upper() for s in study.get("states", [])]:
+                return "Near You"
+            return "Other"
+
+        # ✅ Site match
+        for sc in site_coords_list:
+            if participant_coords and geodesic(participant_coords, sc).miles <= 100:
                 return "Near You"
 
-        center = (33.9697897, -118.2468148)  # default US center for distance check
-        try:
-            if coords:
-                distance = geodesic(coords, center).miles
-                if distance <= 100:
-                    return "Near You"
-                elif distance <= 1500:
-                    return "National"
-        except:
-            pass
-        return "Other"
+        # ✅ Study-level coordinate fallback
+        if participant_coords and study_coords and len(study_coords) == 2:
+            if geodesic(participant_coords, tuple(study_coords)).miles <= 100:
+                return "Near You"
+            elif geodesic(participant_coords, tuple(study_coords)).miles <= 1500:
+                return "National"
+
+        # ✅ State match fallback
+        if participant_state:
+            states = [s.upper() for s in study.get("states", [])]
+            if participant_state.upper() in states:
+                return "Near You"
+
+    except Exception as e:
+        print("⚠️ Location classification error:", e)
+
+    return "Other"
 
     grouped = {"Near You": [], "National": [], "Other": []}
     for match in matches:
@@ -89,7 +108,8 @@ def format_matches_for_gpt(matches):
         score = match.get("match_score", 0)
         reasons = match.get("match_reason", [])
         participant_state = study.get("participant_state")
-        tag = classify_location(study.get("coordinates"), study=study, participant_state=participant_state)
+        participant_coords = study.get("participant_coords")  # already injected in match_studies
+        tag = classify_location(participant_coords, study=study, participant_state=participant_state)
 
         matched_includes = [r for r in reasons if "Matches include" in r]
         missing_required = [r for r in reasons if "Missing required" in r]

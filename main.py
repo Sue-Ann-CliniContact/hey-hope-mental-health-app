@@ -391,6 +391,9 @@ async def chat_handler(request: Request):
             all_matches = match_studies(participant_data, all_studies)
             selected_titles = study_selection_stage[session_id].get("selected_titles", [])
             confirmed_matches = [m for m in all_matches if m["study"].get("study_title") in selected_titles]
+            participant_coords = participant_data.get("coordinates")
+            for m in confirmed_matches:
+                m["study"]["participant_coords"] = participant_coords
             del study_selection_stage[session_id]
 
             if not confirmed_matches:
@@ -409,9 +412,15 @@ async def chat_handler(request: Request):
         matches = match_studies(participant_data, all_studies)
         study_selection_stage[session_id] = {"matches": matches}
 
+        # Inject participant_coords into each match for use in utils.py location logic
+        participant_coords = participant_data.get("coordinates")
+        for m in matches:
+            m["study"]["participant_coords"] = participant_coords
+
         return {
             "reply": format_matches_for_gpt(matches)
         }
+
     except Exception as e:
         print("❌ JSON parsing failed:", str(e))
         return {"reply": "Sorry, I couldn’t understand your details. Can you try again briefly?"}
