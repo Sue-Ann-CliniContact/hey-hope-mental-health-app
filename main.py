@@ -387,10 +387,16 @@ async def chat_handler(request: Request):
 
             with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
                 all_studies = json.load(f)
-            
-            for study in all_studies:
-                study["sites"] = study.get("site_locations_and_contacts", [])
 
+            for study in all_studies:
+                raw_sites = study.get("site_locations_and_contacts", [])
+                for s in raw_sites:
+                    if "coordinates" in s:
+                        coords = s["coordinates"]
+                        s["latitude"] = coords.get("lat")
+                        s["longitude"] = coords.get("lng")
+                study["sites"] = raw_sites
+            
             all_matches = match_studies(participant_data, all_studies)
             selected_titles = study_selection_stage[session_id].get("selected_titles", [])
             confirmed_matches = [m for m in all_matches if m["study"].get("study_title") in selected_titles]
