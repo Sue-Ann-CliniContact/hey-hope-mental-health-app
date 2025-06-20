@@ -1,44 +1,58 @@
-def format_matches_for_gpt(matches):
-    if not matches:
-        return "❌ Sorry, we couldn't find any matching studies at the moment."
+def normalize_participant_data(raw):
+    key_map = {k.lower(): k for k in raw}
 
-    buckets = {
-        "Near You": [],
-        "National": [],
-        "Other": []
-    }
+    def get_any(*keys):
+        for key in keys:
+            match = next((raw[v] for k, v in key_map.items() if key.lower() in k), None)
+            if match:
+                return match
+        return ""
 
-    for match in matches:
-        tag = match.get("location_tag", "Other")
-        if tag not in buckets:
-            tag = "Other"
-        buckets[tag].append(match)
+    # 🎯 Normalize core fields
+    raw["dob"] = raw.get("dob") or get_any("date of birth")
+    raw["phone"] = normalize_phone(raw.get("phone") or get_any("phone number"))
+    raw["zip"] = raw.get("zip") or get_any("zip", "zip code")
+    raw_gender = raw.get("gender") or get_any("gender", "gender identity")
+    raw["gender"] = normalize_gender(raw_gender)
+    raw["city"] = raw.get("city") or get_any("city")
+    raw["state"] = normalize_state(raw.get("state") or get_any("state"))
 
-    def format_group(label, studies):
-        if not studies:
-            return ""
-        out = f"\n\n### 🏷️ {label} Studies\n"
-        for i, match in enumerate(studies[:5], 1):
-            title = match.get("study_title") or "Untitled"
-            link = match.get("link") or ""
-            locs = match.get("locations") or "Not specified"
-            summary = match.get("summary") or ""
-            rationale = match.get("match_rationale") or ""
-            eligibility = match.get("eligibility") or ""
-            contact = match.get("contacts") or "Not provided"
+    # 🗺️ ZIP → City/State fallback
+    if (not raw["city"] or not raw["state"]) and raw.get("zip"):
+        try:
+            loc = geolocator.geocode(f"{raw['zip']}, USA")
+            if loc:
+                print("📦 Raw geocoder output:", loc)
+                parts = loc.address.split(", ")
+                print("📍 Parsed from string:", parts)
+                raw["city"] = raw["city"] or parts[0] if len(parts) >= 2 else ""
+                raw["state"] = raw["state"] or normalize_state(parts[1]) if len(parts) >= 2 else ""
+                print(f"✅ ZIP enrichment resolved to {raw['city']}, {raw['state']}")
+        except Exception as e:
+            print("⚠️ ZIP enrichment error:", e)
 
-            out += (
-                f"\n**{i}. [{title}]({link})**\n"
-                f"📍 **Location**: {locs}\n"
-                f"📋 **Summary**: {summary[:300]}{'...' if len(summary) > 300 else ''}\n"
-                f"✅ **Why it matches**: {rationale}\n"
-                f"📄 **Eligibility Highlights**: {eligibility[:250]}{'...' if len(eligibility) > 250 else ''}\n"
-                f"☎️ **Contact**: {contact}\n"
-            )
-        return out
+    raw["city"] = raw.get("city") or "Unknown"
+    raw["state"] = raw.get("state") or "Unknown"
+    raw["location"] = f"{raw['city']}, {raw['state']}"
 
-    return (
-        format_group("Near You", buckets["Near You"]) +
-        format_group("National", buckets["National"]) +
-        format_group("Other", buckets["Other"])
-    ).strip()
+    # 🧠 Mental health summary
+    conds = raw.get("diagnosis_history") or get_any("diagnosed with", "mental health conditions", "conditions")
+    raw["diagnosis_history"] = ", ".join(conds) if isinstance(conds, list) else conds
+
+    # 🎂 Age
+    raw["age"] = calculate_age(raw["dob"])
+
+    # 🧭 Coordinates for proximity matching
+    raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
+    print("📌 Final participant coordinates set to:", raw["coordinates"])
+
+    # 🩺 River-related screening fields
+    raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
+    raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
+    raw["ketamine_use"] = raw.get("ketamine_use") or get_any("ketamine therapy", "ketamine use")
+
+    # 👶 Pregnancy logic (male default = No)
+    if raw["gender"] == "male":
+        raw["pregnant"] = "No"
+
+    return raw

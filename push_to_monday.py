@@ -3,7 +3,7 @@ import requests
 import json
 
 MONDAY_API_KEY = os.getenv("MONDAY_API_KEY")
-BOARD_ID = 2004529213  # Updated Hey Hope board ID
+BOARD_ID = 2003358867  # Hey Hope board
 GROUP_ID = "topics"
 
 def push_to_monday(participant_data):
@@ -17,34 +17,47 @@ def push_to_monday(participant_data):
     if not phone_value.startswith("+"):
         phone_value = "+" + phone_value.lstrip("+")
 
-    tags = participant_data.get("matched_tags", [])
-    matched_studies = participant_data.get("matched_studies", [])
-
     column_values = {
-        "email_mkrzc5px": {
+        "email_mkrwp3sg": {
             "email": participant_data.get("email", ""),
             "text": participant_data.get("email", "")
         },
-        "phone_mkrzeeh7": {
+        "phone_mkrwnw09": {
             "phone": phone_value
         },
-        "numeric_mkrzfy78": participant_data.get("zip", ""),
-        "text_mkrz55pk": participant_data.get("location", ""),
-        "text_mkrz2151": participant_data.get("dob", ""),
-        "text_mkrz2hx1": participant_data.get("gender", ""),
-        "text_mkrze78q": participant_data.get("main_conditions", ""),
-        "text_mkrzmr4a": participant_data.get("diagnosis_history", ""),
-        "text_mkrzygkg": participant_data.get("receiving_treatment", ""),
-        "text_mkrzw93e": participant_data.get("medications", ""),
-        "text_mkrzsdxr": participant_data.get("preferred_format", ""),
-        "text_mkrzqy0p": participant_data.get("remote_ok", ""),
-        "text_mkrzptfz": participant_data.get("preferred_language", ""),
-        "text_mkrz5rgj": participant_data.get("future_studies_opt_in", ""),
-        "text_mkrzagbg": "Yes" if participant_data.get("rivers_match") else "No",
-        "long_text_mkrzgyf7": ", ".join(tags),
-        "long_text_mkrza8m6": "\n".join(matched_studies)
+        "text_mkrw88sj": participant_data.get("city", ""),
+        "text_mkrwfpm2": participant_data.get("state", ""),
+        "text_mkrwbndm": participant_data.get("zip", ""),
+        "text_mkrw5hsj": participant_data.get("best_time", ""),
+        "text_mkrwey0s": participant_data.get("text_opt_in", ""),
+        "text_mkrwk3tk": participant_data.get("dob", ""),
+        "text_mkrwc5h6": participant_data.get("gender", ""),
+        "text_mkrwfv06": participant_data.get("ethnicity", ""),
+        "text_mkrw6ebk": participant_data.get("veteran", ""),
+        "text_mkrwfp9q": participant_data.get("indigenous", ""),
+        "text_mkrw6jhn": participant_data.get("employment", ""),
+        "text_mkrwp4az": participant_data.get("income", ""),
+        "text_mkrw2622": participant_data.get("insurance", ""),
+        "text_mkrw4sz3": participant_data.get("current_mental_care", ""),
+        "text_mkrw1n9t": participant_data.get("diagnosis_history", ""),
+        "text_mkrw293d": participant_data.get("ssri_use", ""),
+        "text_mkrwgytp": participant_data.get("bipolar", ""),
+        "text_mkrwrdv6": participant_data.get("blood_pressure", ""),
+        "text_mkrwcpt": participant_data.get("ketamine_use", ""),
+        "text_mkrwts3h": participant_data.get("pregnant", ""),
+        "text_mkrw3e9t": participant_data.get("remote_ok", ""),
+        "text_mkrwnrrd": participant_data.get("screening_calls_ok", ""),
+        "text_mkrwb4wx": participant_data.get("preferred_format", ""),
+        "text_mkrw26r3": participant_data.get("non_english_home", ""),
+        "text_mkrw250s": participant_data.get("preferred_language", ""),
+        "text_mkrw27j4": participant_data.get("future_studies_opt_in", ""),
+        "text_mkrw4nbt": participant_data.get("notes", "")
     }
 
+    if participant_data.get("rivers_match", False):
+        column_values["text_mkrxbqdc"] = "Yes"
+
+    # Escape properly
     column_values_str = json.dumps(column_values).replace('\\', '\\\\').replace('"', '\\"')
 
     query = f'''

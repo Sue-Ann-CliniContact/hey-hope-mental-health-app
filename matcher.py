@@ -1,5 +1,7 @@
 import math
 import re
+from geopy.distance import geodesic
+from utils import normalize_gender
 
 def haversine_distance(coord1, coord2):
     # Calculate distance in kilometers between two coordinate tuples
@@ -36,20 +38,85 @@ def expand_terms(diagnosis_text):
             terms.add(norm)
     return terms
 
-def match_studies(participant, studies, exclude_river=False):
-    matches = []
+def match_studies(participant, all_studies, exclude_river=False):
+    coords = participant.get("coordinates")
     age = participant.get("age")
-    location = participant.get("coordinates")
-    diagnosis = (participant.get("diagnosis_history") or "").lower()
-    expanded_terms = expand_terms(diagnosis)
+    gender = normalize_gender(participant.get("gender"))
+    state = participant.get("state", "").upper()
 
-    for study in studies:
-        title = (study.get("study_title") or "").lower()
+    conds = participant.get("diagnosis_history", "").split(",")
+    participant_tags = set(normalize_gender(gender).lower().strip() if gender else "")
+    participant_tags.update([c.strip().lower() for c in conds if c.strip()])
 
-        # Skip River study if explicitly excluded
-        if exclude_river and "river" in title:
+    matched = []
+
+    for study in all_studies:
+        title = study.get("study_title", "")
+        tags = [t.lower().strip() for t in study.get("tags", [])]
+
+        if exclude_river and "custom_river_program" in tags:
             continue
 
+        # Handle sites
+        sites = study.get("site_locations_and_contacts", [])
+        matching_sites = [s for s in sites if is_site_nearby(s, coords)]
+
+        has_near_site = bool(matching_sites)
+        is_telehealth = "include_telehealth" in tags
+
+        if not has_near_site and not is_telehealth:
+            study_coords = study.get("coordinates")
+            if study_coords:
+                try:
+                    loc_tuple = (study_coords.get("lat"), study_coords.get("lng"))
+                    if geodesic(coords, loc_tuple).miles <= 100:
+                        has_near_site = True
+                except Exception:
+                    pass
+
+        if not has_near_site and not is_telehealth:
+            study_states = [s.upper() for s in study.get("states", [])]
+            if state in study_states:
+                has_near_site = True
+
+        if not has_near_site and not is_telehealth:
+            continue
+        
+        if not passes_basic_filters(study, participant_tags, age, gender, coords, state):
+            continue
+
+        score = 5
+        reasons = []
+        matched_includes = []
+        missing_required = []
+        excluded_flags = []
+
+        for tag in tags:
+            base = tag.split("_")[-1]
+            if tag.startswith("include_") and base in participant_tags:
+                score += 1
+                matched_includes.append(base)
+                reasons.append(f"✅ Matches include: {base}")
+            elif tag.startswith("exclude_") and base in participant_tags:
+                score -= 2
+                excluded_flags.append(base)
+                reasons.append(f"❌ Excluded due to: {base}")
+            elif tag.startswith("require_") and base not in participant_tags:
+                score -= 2
+                missing_required.append(base)
+                reasons.append(f"⚠️ Missing required: {base}")
+ 
+
+        if "custom_river_program" in tags:
+            score += 3
+            reasons.append("🌊 Prioritized River Program")
+
+        match_record = {
+            "study": study,
+            "match_score": max(1, min(score, 10)),
+            "match_reason": reasons,
+        }
+        
         # 🚫 Gender-based exclusion logic
         participant_gender = (participant.get("gender") or "").lower()
         eligibility_text = (study.get("eligibility_text") or "").lower()
@@ -123,5 +190,5 @@ def match_studies(participant, studies, exclude_river=False):
             "eligibility": study.get("eligibility_text", ""),
         })
 
-    matches.sort(key=lambda m: m["match_confidence"], reverse=True)
-    return matches
+    # Sort by score and River priority
+    return sorted(matched, key=lambda m: (-m["match_score"], "river" not in m["study"]["study_title"].lower()))

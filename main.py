@@ -5,7 +5,7 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import format_matches_for_gpt
+from utils import flatten_dict, normalize_gender, format_matches_for_gpt, normalize_participant_data
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3
@@ -23,39 +23,55 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. Ask the user one friendly question at a time to collect the following information:
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope.
+Your goal is to assist individuals that suffer from depression, anxiety, PTSD or a combination of these conditions find clinical research trials that could assist them.
+Always be polite and considerate of the user.
 
-- Full Name
-- Email Address
-- Phone Number
-- City
-- State
-- ZIP Code
-- Best Time to Reach You
-- Can we contact you via text message?
-- Date of birth (e.g., March 14, 1992)
-- Gender Identity
-- Race / Ethnicity
-- Are you a U.S. Veteran?
-- Are you Native American or identify as Indigenous?
-- Do you have health insurance?
-- Are you currently receiving any form of mental health care?
-- Have you ever been diagnosed with any of the following? Depression, Anxiety, PTSD, Other, or None
-- Have you ever tried SSRIs or antidepressants?
-- Have you ever been diagnosed with bipolar disorder?
-- Do you currently have high blood pressure that is not medically managed?
-- Have you used ketamine recreationally?
-- Are you currently pregnant or breastfeeding? (only if applicable)
-- Are you open to remote or at-home participation options?
-- Are you willing to participate in brief screening calls?
-- Preferred participation format: In-person / Remote / No preference
-- Do you speak a language other than English at home?
-- Are you open to future studies?
-- Anything else you'd like us to know?
+You must collect the following fields before proceeding to matching:
+- Name
+- Email
+- Phone number
+- Date of birth
+- Gender
+- ZIP code
+- Main mental health conditions (e.g. depression, PTSD, anxiety)
 
-💬 Say “Thanks for that!” after each response. Be friendly and conversational.
-❌ Do NOT summarize or repeat back responses.
-✅ Once all information is collected, return ONLY a single JSON object with all fields.
+If the users input is vague or not structured then politely ask them to provide the neceassry information you need to match them with a study by asking them the questions above one by one.
+After collecting just those fields, stop and return ONLY a JSON object with those values. Do NOT ask follow-up questions yet.
+
+❗️Important rules:
+- Always return ONLY a JSON object with those fields.
+- DO NOT return natural language, greetings, summaries, or follow-up questions.
+- DO NOT include any lists of study titles or explanations.
+- DO NOT include "Thanks", "Got it", or "Here's what I found".
+- If the user message already contains all required fields, extract them and return them immediately as a JSON object.
+
+✅ Example output:
+{
+  "Name": "Jane Doe",
+  "Email": "jane@example.com",
+  "Phone number": "(555) 123-4567",
+  "Date of birth": "March 10, 1990",
+  "Gender": "Female",
+  "ZIP code": "94110",
+  "Conditions": ["Depression", "PTSD"]
+}
+
+Return a broad list of studies (10–20), including the River Program if eligible.
+
+Then, ask smart follow-up questions (e.g. about bipolar, pregnancy, cancer, etc.) based on what's needed to confirm matches from that list. Never ask all questions upfront.
+
+Once enough information is gathered, return a structured JSON object of their info.
+
+After each user reply, say “Got it!” or “Thanks!” to keep it conversational. Do not summarize their answers or repeat them back.
+
+Follow-up rules:
+- Ask about bipolar only if a study excludes it.
+- Ask about gender-specific requirements only if needed.
+- If eligible, ask River Program follow-ups.
+
+Important: Do NOT include any introductory or summary text in your replies. Only return a JSON object.
+Always return only a JSON object with participant answers. Do NOT return any lists of study titles or commentary.
 """
 
 chat_histories = {}
@@ -120,13 +136,18 @@ async def chat_handler(request: Request):
         else:
             return {"reply": "I don’t have your previous info handy. Please start again to explore more study options."}
 
+    # ✅ RIVER: Confirm interest
     if session_id in river_pending_confirmation:
         if user_input.strip().lower() in ["yes", "y", "yeah", "sure"]:
-            participant_data = river_pending_confirmation.pop(session_id)
-            participant_data["rivers_match"] = True
-            push_to_monday(participant_data)
-            last_participant_data[session_id] = participant_data
-            return {"reply": "✅ Great! You've been submitted to the River Program. You'll be contacted shortly.\n\nType 'other options' to explore more studies."}
+            return {
+                "reply": (
+                    "🌊 Great! To confirm your eligibility for the River Program, please answer the following:\n\n"
+                    "- Have you been diagnosed with bipolar II disorder?\n"
+                    "- Do you have uncontrolled high blood pressure?\n"
+                    "- Have you used ketamine recreationally in the past?"
+                )
+            }
+
         elif user_input.strip().lower() in ["no", "n", "not interested"]:
             participant_data = river_pending_confirmation.pop(session_id)
             push_to_monday(participant_data)
@@ -135,13 +156,83 @@ async def chat_handler(request: Request):
                 all_studies = json.load(f)
             other_matches = match_studies(participant_data, all_studies, exclude_river=True)
             return {"reply": format_matches_for_gpt(other_matches)}
-        else:
-            return {"reply": "Just to confirm — would you like to apply to the River Program? Yes or No?"}
+
+    # ✅ RIVER: Handle follow-up responses
+    if session_id in river_pending_confirmation:
+        participant_data = river_pending_confirmation[session_id]
+        input_text = user_input.lower()
+
+        # Extract answers
+        if "bipolar" in input_text:
+            participant_data["bipolar"] = "yes" if "yes" in input_text else "no"
+        if "pressure" in input_text:
+            if "uncontrolled" in input_text and "no" in input_text:
+                participant_data["blood_pressure"] = "no"
+            elif "yes" in input_text or "uncontrolled" in input_text:
+                participant_data["blood_pressure"] = "yes"
+        if "ketamine" in input_text:
+            participant_data["ketamine_use"] = "yes" if "yes" in input_text else "no"
+
+        if all(participant_data.get(field) for field in ["bipolar", "blood_pressure", "ketamine_use"]):
+            eligible = is_eligible_for_river(participant_data)
+            participant_data["rivers_match"] = eligible
+            push_to_monday(participant_data)
+            last_participant_data[session_id] = participant_data
+            river_pending_confirmation.pop(session_id, None)
+
+            if eligible:
+                return {"reply": "✅ Great! You’ve been submitted to the River Program. You’ll be contacted shortly.\n\nType **'other options'** to explore more studies."}
+            else:
+                with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
+                    all_studies = json.load(f)
+                other_matches = match_studies(participant_data, all_studies, exclude_river=True)
+                return {
+                    "reply": "⚠️ Based on your answers, you may not qualify for the River Program. Here are other studies that may be a better fit:\n\n" + format_matches_for_gpt(other_matches)
+                }
+
+        return {"reply": "Thanks! Please answer all 3 follow-up questions so we can confirm your eligibility."}
+
+    # ✅ Handle user selecting studies by number
+    if session_id in study_selection_stage and "matches" in study_selection_stage[session_id]:
+        matches = study_selection_stage[session_id]["matches"]
+        input_text = user_input.strip().lower()
+        selected = []
+        for i, m in enumerate(matches, 1):
+            if str(i) in input_text or m["study"].get("study_title", "").lower() in input_text:
+                selected.append(m)
+
+        if not selected:
+            return {"reply": "❓ I didn’t catch which study you meant. Can you tell me the number or name again?"}
+
+        tag_question_map = {
+            "require_female": "Are you female?",
+            "require_male": "Are you male?",
+            "exclude_bipolar": "Have you been diagnosed with bipolar disorder?",
+            "exclude_pregnant": "Are you currently pregnant or breastfeeding?",
+            "require_veteran": "Are you a U.S. military veteran?",
+            "include_telehealth": "Would you prefer telehealth (remote) options?",
+            "include_seniors": "Are you over 60?",
+            "include_alcohol": "Do you currently consume alcohol or have a history of alcohol use?",
+            "include_substance use": "Do you have a history of substance use?"
+        }
+
+        questions = []
+        for match in selected:
+            title = match["study"].get("study_title", "Untitled")
+            tags = match["study"].get("tags", [])
+            q_list = [tag_question_map[tag] for tag in tags if tag in tag_question_map]
+            if q_list:
+                questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_list))
+
+        if questions:
+            return {"reply": "\n\n".join(questions)}
 
     if session_id not in chat_histories:
+        print("🆕 New session started:", session_id)
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    chat_histories[session_id].append({"role": "user", "content": user_input})
+        study_selection_stage[session_id] = {}
+        river_pending_confirmation.pop(session_id, None)
+        last_participant_data[session_id] = {}
 
     response = openai.ChatCompletion.create(
         model="gpt-4",
@@ -157,59 +248,57 @@ async def chat_handler(request: Request):
         try:
             raw_json = match.group()
             print("🔍 Raw JSON extracted:", raw_json)
-
             participant_data = json.loads(raw_json)
 
-            # Normalize keys
-            participant_data["dob"] = participant_data.get("dob") or participant_data.get("Date of birth", "")
-            participant_data["city"] = participant_data.get("city") or participant_data.get("City", "")
-            participant_data["state"] = participant_data.get("state") or participant_data.get("State", "")
-            participant_data["zip"] = participant_data.get("zip") or participant_data.get("ZIP Code", "")
-            participant_data["gender"] = participant_data.get("gender") or participant_data.get("Gender Identity", "")
-            diagnosis = participant_data.get("Have you ever been diagnosed with any of the following?")
-            participant_data["diagnosis_history"] = ", ".join(diagnosis) if isinstance(diagnosis, list) else diagnosis or ""
+            # === Normalize and enrich participant data ===
+            participant_data = normalize_participant_data(json.loads(raw_json))
+            print("📊 Final participant data before match:", participant_data)
 
-            participant_data["age"] = calculate_age(participant_data["dob"])
-            participant_data["location"] = f"{participant_data['city']}, {participant_data['state']}"
-            participant_data["coordinates"] = get_coordinates(participant_data["city"], participant_data["state"], participant_data["zip"])
-
-            participant_data["bipolar"] = next((v for k, v in participant_data.items() if k.lower() == "have you ever been diagnosed with bipolar disorder?"), "")
-            participant_data["blood_pressure"] = next((v for k, v in participant_data.items() if k.lower() == "do you currently have high blood pressure that is not medically managed?"), "")
-            participant_data["ketamine_use"] = next((v for k, v in participant_data.items() if k.lower() == "have you used ketamine recreationally in the past?"), "")
-
-            # Final field check
-            required_fields = ["dob", "city", "state", "zip", "diagnosis_history", "age", "gender"]
-            missing_fields = [k for k in required_fields if not participant_data.get(k)]
-            if missing_fields:
-                print("⚠️ Missing fields:", missing_fields)
-                return {"reply": "Thanks! I’ve saved your info so far. Let’s keep going — I still need a few more details before I can match you to studies."}
-
+            # === Step 1: Load studies ===
             with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
                 all_studies = json.load(f)
 
+            # === Step 2: Match studies ===
             matches = match_studies(participant_data, all_studies)
 
-            for m in matches:
-                if "river" in m.get("study_title", "").lower() and is_eligible_for_river(participant_data):
-                    river_pending_confirmation[session_id] = participant_data
-                    return {"reply": (
-                        "🌊 You've been matched to our **River Program** for affordable at-home ketamine therapy with telehealth support.\n\n"
-                        "Would you like to apply now?"
-                    )}
+            # === Step 3: Handle River match logic ===
+            river_matches = [
+                m for m in matches
+                if "custom_river_program" in m["study"].get("tags", []) and is_eligible_for_river(participant_data)
+            ]
 
-            # No River match and no other studies matched
+            if river_matches:
+                river_pending_confirmation[session_id] = {
+                    "participant_data": participant_data,
+                    "matches": matches
+                }
+                study_selection_stage[session_id] = {}  # Ensure fresh
+                return {
+                    "reply": (
+                        "🌊 You've been matched to our **River Program** for affordable at-home ketamine therapy.\n\n"
+                        "Would you like to continue with this one? (Yes or No)"
+                    )
+                }
+
+            # === Step 4: If no River or not eligible, show other matches immediately ===
             if not matches:
-                last_participant_data[session_id] = participant_data
                 push_to_monday(participant_data)
-                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
+                last_participant_data[session_id] = participant_data
+                return {"reply": "😕 No matches found, but your info has been saved for future studies."}
 
-            push_to_monday(participant_data)
+            # Store data and show top 10 matches
             last_participant_data[session_id] = participant_data
-            return {"reply": format_matches_for_gpt(matches)}
+            study_selection_stage[session_id] = {
+                "matches": matches[:10]
+            }
+            push_to_monday(participant_data)
+            return {"reply": format_matches_for_gpt(matches[:10])}
 
         except Exception as e:
             print("❌ Exception while processing GPT match JSON:", str(e))
             print("📨 GPT message was:", gpt_message)
-            return {"reply": "We encountered an error processing your info. Please try again or contact support."}
+            return {
+                "reply": "We encountered an error processing your info. Please try again or contact support."
+            }
 
     return {"reply": gpt_message}
