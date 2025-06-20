@@ -198,10 +198,10 @@ async def chat_handler(request: Request):
                     )}
 
             # No River match and no other studies matched
-               if not matches:
-                    last_participant_data[session_id] = participant_data
-                    push_to_monday(participant_data)
-                    return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
+            if not matches:
+                last_participant_data[session_id] = participant_data
+                push_to_monday(participant_data)
+                return {"reply": "😕 I couldn’t find any matches at the moment, but your info has been saved. We’ll reach out when a good study comes up."}
 
             push_to_monday(participant_data)
             last_participant_data[session_id] = participant_data
