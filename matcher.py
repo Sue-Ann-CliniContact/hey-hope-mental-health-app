@@ -113,16 +113,6 @@ def match_studies(participant_data, all_studies, exclude_river=False):
 
     if gender:
         participant_tags.add(gender)
-    if pd.get("Pregnant or Breastfeeding") is True or pd.get("Pregnant or breastfeeding (Follow-Up)") is True:
-        participant_tags.add("pregnant")
-    if normalize(pd.get("bipolar", "")) == "yes":
-        participant_tags.add("bipolar")
-    if normalize(pd.get("blood_pressure", "")) in ["yes", "unsure"]:
-        participant_tags.add("blood_pressure")
-    if normalize(pd.get("ketamine_use", "")) == "yes":
-        participant_tags.add("ketamine_use")
-    if normalize(pd.get("U.S. Veteran", "") or pd.get("veteran", "")) == "yes":
-        participant_tags.add("veteran")
 
     print("👤 Gender:", gender)
     print("📌 Participant Tags:", participant_tags)
