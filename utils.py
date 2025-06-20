@@ -1,8 +1,41 @@
 from geopy.distance import geodesic
+from dateutil import parser
+from datetime import datetime
 
 # === Confidence thresholds ===
 HIGH_MATCH_THRESHOLD = 8
 GOOD_MATCH_THRESHOLD = 5
+
+def normalize_participant_data(raw):
+    data = {}
+
+    # Map fields like "Date of birth" → "dob"
+    for k, v in raw.items():
+        key = k.lower().strip()
+        if "birth" in key or "dob" in key:
+            data["dob"] = v
+        elif key in ["zip code", "zip"]:
+            data["zip"] = str(v).strip()
+        elif key in ["gender", "gender identity"]:
+            data["gender"] = v
+        else:
+            data[key] = v
+
+    # 🎂 Calculate age from dob
+    if "dob" in data and data["dob"]:
+        try:
+            dob = parser.parse(data["dob"])
+            today = datetime.today()
+            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+            data["age"] = age
+            print("🎂 Parsed age from DOB:", data["dob"], "→", age)
+        except Exception as e:
+            print("⚠️ Failed to parse DOB:", data["dob"], "→", str(e))
+            data["age"] = None
+    else:
+        data["age"] = None
+
+    return data
 
 # ✅ Required for main.py JSON parsing
 def flatten_dict(d, parent_key='', sep=' - '):
