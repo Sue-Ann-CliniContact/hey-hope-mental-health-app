@@ -51,12 +51,12 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
             return False
     
     # ✅ State-specific match logic
-    if "states" in study and isinstance(study["states"], list):
+    if "states" in study and isinstance(study["states"], list) and study["states"]:
         if participant_state.upper() not in [s.upper() for s in study["states"]]:
             return False
 
     study_coords = study.get("coordinates")
-    if coords and isinstance(study_coords, dict) and not study.get("matching_site_contacts"):
+    if coords and isinstance(study_coords, dict):
         try:
             study_tuple = (study_coords.get("lat"), study_coords.get("lng"))
             distance = geodesic(coords, study_tuple).miles
@@ -175,7 +175,9 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             print(f"⛔️ Skipping {title}: no nearby site or study location match")
             continue
 
+        print("⏳ Checking basic filters for:", study.get("study_title", "Unknown"))
         if not passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
+            print(f"❌ Filtered out by eligibility logic: {title}")
             continue
 
         score = 5
