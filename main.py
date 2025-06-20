@@ -380,34 +380,35 @@ async def chat_handler(request: Request):
             except Exception as e:
                 print("❌ River processing failed:", str(e))
                 return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
-                
+
         participant_data = normalize_participant_data(json.loads(raw_json))
         last_participant_data[session_id] = participant_data
 
-        # 🔁 If previously selected studies exist, re-check eligibility after new answers
+        with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
+            all_studies = json.load(f)
+
+        # ✅ Always patch lat/lng
+        for study in all_studies:
+            for s in study.get("site_locations_and_contacts", []):
+                coords = s.get("coordinates")
+                if coords:
+                    s["latitude"] = coords.get("lat")
+                    s["longitude"] = coords.get("lng")
+            study["sites"] = study.get("site_locations_and_contacts", [])
+
+        # 🔁 If previously selected studies exist, re-check eligibility
         if "selected_titles" in study_selection_stage.get(session_id, {}):
-            participant_data = normalize_participant_data(json.loads(raw_json))
             print("✅ Participant coords:", participant_data.get("coordinates"))
-            last_participant_data[session_id] = participant_data
             push_to_monday(participant_data)
 
-            with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
-                all_studies = json.load(f)
-
-            for study in all_studies:
-                for s in study.get("site_locations_and_contacts", []):
-                    coords = s.get("coordinates")
-                    if coords:
-                        s["latitude"] = coords.get("lat")
-                        s["longitude"] = coords.get("lng")
-                study["sites"] = study.get("site_locations_and_contacts", [])
-            
             all_matches = match_studies(participant_data, all_studies)
             selected_titles = study_selection_stage[session_id].get("selected_titles", [])
             confirmed_matches = [m for m in all_matches if m["study"].get("study_title") in selected_titles]
+
             participant_coords = participant_data.get("coordinates")
             for m in confirmed_matches:
                 m["study"]["participant_coords"] = participant_coords
+
             del study_selection_stage[session_id]
 
             if not confirmed_matches:
@@ -418,23 +419,19 @@ async def chat_handler(request: Request):
                     "Thanks! Based on your answers, you're a confirmed match for the following studies:\n\n" +
                     format_matches_for_gpt(confirmed_matches)
                 )
-            }        
-        
-        # Match studies
-        with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
-            all_studies = json.load(f)
-        
-        matches = match_studies(participant_data, all_studies)
-        study_selection_stage[session_id] = {"matches": matches}
+            }
 
-        # Inject participant_coords into each match for use in utils.py location logic
-        participant_coords = participant_data.get("coordinates")
-        for m in matches:
-            m["study"]["participant_coords"] = participant_coords
+        else:
+            matches = match_studies(participant_data, all_studies)
+            study_selection_stage[session_id] = {"matches": matches}
 
-        return {
-            "reply": format_matches_for_gpt(matches)
-        }
+            participant_coords = participant_data.get("coordinates")
+            for m in matches:
+                m["study"]["participant_coords"] = participant_coords
+
+            return {
+                "reply": format_matches_for_gpt(matches)
+            }
 
     except Exception as e:
         print("❌ JSON parsing failed:", str(e))
