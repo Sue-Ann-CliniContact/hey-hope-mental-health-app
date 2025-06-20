@@ -5,7 +5,7 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import flatten_dict, normalize_gender, format_matches_for_gpt
+from utils import flatten_dict, normalize_gender, format_matches_for_gpt, normalize_participant_data
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3
@@ -382,6 +382,7 @@ async def chat_handler(request: Request):
                 return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
 
         participant_data = normalize_participant_data(json.loads(raw_json))
+        print("📊 Final participant data before match:", participant_data)
         last_participant_data[session_id] = participant_data
 
         with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
