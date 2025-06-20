@@ -23,7 +23,9 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope.
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. 
+Your goal is to assist individuals who have either depression, anxiety, PTSD or combination of these find potential research studies they could participate in.
+Always remain kind in your responses and considerate of the individual who is providing you their information in the hope that there are studies that could assist them.
 
 You must collect the following fields before proceeding to matching:
 - Name
@@ -33,6 +35,8 @@ You must collect the following fields before proceeding to matching:
 - Gender
 - ZIP code
 - Main mental health conditions (e.g. depression, PTSD, anxiety)
+
+If the user message is vague or doesn't include structured answers, politely tell them what you need and collect the information above by asking the questions one by one.
 
 After collecting just those fields, stop and return ONLY a JSON object with those values. Do NOT ask follow-up questions yet.
 
@@ -254,14 +258,14 @@ async def chat_handler(request: Request):
         }
 
     # ✅ Handle multi-selection of study matches (e.g., "1, 11")
-    if session_id in study_selection_stage:
+    if session_id in study_selection_stage and "matches" in study_selection_stage[session_id]:
         matches = study_selection_stage[session_id]["matches"]
         input_text = user_input.strip().lower()
         selected = []
 
         participant_data = last_participant_data.get(session_id, {})
         if participant_data:
-            last_participant_data[session_id] = participant_data  # <== add here to ensure continuity
+            last_participant_data[session_id] = participant_data  # keep latest data
 
         for i, m in enumerate(matches, 1):
             if str(i) in input_text or m["study"].get("study_title", "").lower() in input_text:
@@ -295,7 +299,7 @@ async def chat_handler(request: Request):
             "include_female only": "Are you female?",
             "include_male only": "Are you male?",
             "include_lupus": "Have you been diagnosed with lupus?",
-            "include_pms": "Do you experience premenstrual symptoms?"    
+            "include_pms": "Do you experience premenstrual symptoms?"
         }
 
         river_included = False
@@ -309,7 +313,7 @@ async def chat_handler(request: Request):
                 river_included = True
 
         study_selection_stage[session_id]["selected_titles"] = [m["study"]["study_title"] for m in selected]
-        
+
         if river_included:
             river_pending_confirmation[session_id] = last_participant_data.get(session_id, {})
             return {
@@ -318,6 +322,10 @@ async def chat_handler(request: Request):
                     "**Would you like to continue with this one? (Yes or No)**"
                 )
             }
+
+        return {"reply": "\n\n".join(questions) if questions else "✅ Great! You're all set to participate."}
+    else:
+        return {"reply": "⚠️ It looks like your session has reset or there was a problem finding your matches. Please start again to see available studies."}
 
     if session_id not in chat_histories:
         print("🆕 New session started:", session_id)
