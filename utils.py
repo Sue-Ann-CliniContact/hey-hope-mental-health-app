@@ -6,6 +6,16 @@ from geopy.geocoders import GoogleV3
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
+def flatten_dict(d, parent_key='', sep=' - '):
+    items = {}
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.update(flatten_dict(v, new_key, sep=sep))
+        else:
+            items[new_key] = v
+    return items
+
 def normalize_gender(g):
     if not g:
         return ""
