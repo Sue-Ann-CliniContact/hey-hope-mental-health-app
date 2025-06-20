@@ -34,6 +34,7 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
 
     if study.get("min_age_years") is not None and age is not None:
         if age < study["min_age_years"]:
+            print(f"❌ Too young: {age} < {study['min_age_years']}")
             return False
     if study.get("max_age_years") is not None and age is not None:
         if age > study["max_age_years"]:
@@ -53,6 +54,7 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
     # ✅ State-specific match logic
     if "states" in study and isinstance(study["states"], list) and study["states"]:
         if participant_state.upper() not in [s.upper() for s in study["states"]]:
+            print(f"❌ State mismatch: {participant_state} not in {study['states']}")
             return False
 
     study_coords = study.get("coordinates")
@@ -103,7 +105,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     coords = pd.get("coordinates")
     age = pd.get("age")
     gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
-    participant_state = pd.get("state", "") or pd.get("State", "")
+    participant_state = (pd.get("state", "") or pd.get("State", "")).split()[0].upper()
     participant_state = participant_state.upper()
     zip_code = pd.get("zip", "")
 
