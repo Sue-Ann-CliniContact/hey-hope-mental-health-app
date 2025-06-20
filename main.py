@@ -389,13 +389,12 @@ async def chat_handler(request: Request):
                 all_studies = json.load(f)
 
             for study in all_studies:
-                raw_sites = study.get("site_locations_and_contacts", [])
-                for s in raw_sites:
-                    if "coordinates" in s:
-                        coords = s["coordinates"]
+                for s in study.get("site_locations_and_contacts", []):
+                    coords = s.get("coordinates")
+                    if coords:
                         s["latitude"] = coords.get("lat")
                         s["longitude"] = coords.get("lng")
-                study["sites"] = raw_sites
+                study["sites"] = study.get("site_locations_and_contacts", [])
             
             all_matches = match_studies(participant_data, all_studies)
             selected_titles = study_selection_stage[session_id].get("selected_titles", [])

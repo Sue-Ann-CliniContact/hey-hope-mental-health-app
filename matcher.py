@@ -55,9 +55,11 @@ def passes_basic_filters(study, participant_tags, age, gender, coords, participa
         if participant_state.upper() not in [s.upper() for s in study["states"]]:
             return False
 
-    if coords and study.get("coordinates") and not study.get("matching_site_contacts"):
+    study_coords = study.get("coordinates")
+    if coords and isinstance(study_coords, dict) and not study.get("matching_site_contacts"):
         try:
-            distance = geodesic(coords, study["coordinates"]).miles
+            study_tuple = (study_coords.get("lat"), study_coords.get("lng"))
+            distance = geodesic(coords, study_tuple).miles
             if distance > 100:
                 if "include_telehealth" in tags:
                     return True
@@ -76,24 +78,6 @@ def get_matching_sites(study, participant_city, participant_state, participant_z
         if match_zip or match_city or match_state:
             matched.append(site)
     return matched
-
-def get_matching_sites_by_coords(study, participant_coords, fallback_state=None, radius_miles=100):
-    if not participant_coords:
-        return []
-
-    matched_sites = []
-    for site in study.get("sites", []):
-        site_coords = site.get("coordinates")
-        if site_coords and isinstance(site_coords, list) and len(site_coords) == 2:
-            try:
-                distance = geodesic(participant_coords, tuple(site_coords)).miles
-                if distance <= radius_miles:
-                    matched_sites.append(site)
-            except Exception:
-                continue
-        elif fallback_state and site.get("state", "").strip().lower() == fallback_state.strip().lower():
-            matched_sites.append(site)
-    return matched_sites
 
 def is_study_location_near(participant_coords, study_coords, radius_miles=100):
     if not participant_coords or not study_coords:
@@ -147,25 +131,32 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     for study in all_studies:
         title = study.get("study_title", "")
         tags = [normalize(tag) for tag in study.get("tags", [])]
-        site_locations = study.get("sites", [])
+        
+        for site in study.get("sites", []):
+        # 👇 ADD THIS PATCH
+            if "latitude" not in site or "longitude" not in site:
+                site_coords = site.get("coordinates")
+                if isinstance(site_coords, dict):
+                    site["latitude"] = site_coords.get("lat")
+                    site["longitude"] = site_coords.get("lng")
 
         if exclude_river and "custom_river_program" in tags:
             continue
 
         matching_sites = [
-            s for s in site_locations
+            s for s in study.get("sites", [])
             if is_site_nearby(s, coords)
         ]
         
         # Start of site logic
-        matching_sites = [s for s in site_locations if is_site_nearby(s, coords)]
         has_matching_site = bool(matching_sites)
         is_telehealth = "include_telehealth" in tags
-        has_any_sites = bool(site_locations)
 
         # ➕ Fallback 1: study-level coordinates
         if not has_matching_site and not is_telehealth:
             study_coords = study.get("coordinates")
+            if isinstance(study_coords, dict):
+                study_coords = (study_coords.get("lat"), study_coords.get("lng"))
             if is_study_location_near(coords, study_coords):
                 has_matching_site = True
                 matching_sites = []
