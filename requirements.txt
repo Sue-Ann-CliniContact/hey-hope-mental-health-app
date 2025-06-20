@@ -5,3 +5,5 @@ openai==0.28
 geopy
 pydantic
 requests
+python-dateutil
+
