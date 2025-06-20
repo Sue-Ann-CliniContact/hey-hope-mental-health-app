@@ -137,8 +137,11 @@ def get_coordinates(city, state, zip_code):
 
         if loc:
             return (loc.latitude, loc.longitude)
+        else:
+            print("⚠️ No geocoding result found for ZIP:", zip_code)
     except Exception as e:
         print("⚠️ Failed to geocode location:", f"{city}, {state}, {zip_code}", "→", str(e))
+
     return None
 
 def is_eligible_for_river(participant):
@@ -213,7 +216,9 @@ def normalize_participant_data(raw):
     raw["diagnosis_history"] = ", ".join(conds) if isinstance(conds, list) else conds
 
     raw["age"] = calculate_age(raw["dob"])
-    raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
+    coords = get_coordinates(raw["city"], raw["state"], raw["zip"])
+    raw["coordinates"] = coords
+    print("📌 Final participant coordinates set to:", coords)
 
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
