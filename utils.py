@@ -43,9 +43,11 @@ def normalize_state(state_input):
         "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC"
     }
     s = state_input.strip().lower()
-    return US_STATES.get(s, state_input.upper())
+    return US_STATES.get(s, s.upper())
 
 def normalize_phone(phone):
+    if not phone:
+        return ""
     digits = re.sub(r"\D", "", phone)
     if not digits.startswith("1"):
         digits = "1" + digits
@@ -132,4 +134,48 @@ def normalize_participant_data(raw):
     if raw["gender"] == "male":
         raw["pregnant"] = "No"
 
+    print("📊 Final participant data before match:", raw)
     return raw
+
+def format_matches_for_gpt(matches):
+    if not matches:
+        return "😕 Sorry, I couldn't find any matching studies at the moment."
+
+    formatted = []
+    for i, match in enumerate(matches, 1):
+        study = match["study"]
+        score = match.get("score", 6)
+        rationale = match.get("rationale", "General match")
+        locs = study.get("site_locations_and_contacts", [])
+
+        locations = []
+        for site in locs:
+            city = site.get("city", "")
+            state = site.get("state", "")
+            if city and state:
+                locations.append(f"{city}, {state}")
+            elif state:
+                locations.append(state)
+        location_str = ", ".join(locations) if locations else "No location info"
+
+        contact = study.get("study_contact", {})
+        contact_line = ""
+        if contact.get("email"):
+            contact_line += f"📧 {contact['email']}  "
+        if contact.get("phone"):
+            contact_line += f"📞 {contact['phone']}"
+
+        summary = study.get("summary", "").strip()
+        if len(summary) > 350:
+            summary = summary[:347] + "..."
+
+        formatted.append(
+            f"**{i}. {study.get('study_title', 'Untitled Study')}**\n"
+            f"{summary}\n"
+            f"🌍 Location: {location_str}\n"
+            f"🔗 [Study Link]({study.get('study_link', '#')})\n"
+            f"{contact_line}\n"
+            f"💡 Match Confidence: {score}/10 — {rationale}"
+        )
+
+    return "\n\n".join(formatted)
