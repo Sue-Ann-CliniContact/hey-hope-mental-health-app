@@ -156,6 +156,9 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             s for s in site_locations
             if is_site_nearby(s, coords)
         ]
+        
+        # Start of site logic
+        matching_sites = [s for s in site_locations if is_site_nearby(s, coords)]
         has_matching_site = bool(matching_sites)
         is_telehealth = "include_telehealth" in tags
         has_any_sites = bool(site_locations)
@@ -165,7 +168,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             study_coords = study.get("coordinates")
             if is_study_location_near(coords, study_coords):
                 has_matching_site = True
-                matching_sites = []  # Use study-level, not site-level
+                matching_sites = []
                 print(f"📍 Using fallback study-level match for: {title}")
 
         # ➕ Fallback 2: state-level match
@@ -173,11 +176,10 @@ def match_studies(participant_data, all_studies, exclude_river=False):
             study_states = [s.upper() for s in study.get("states", [])]
             if participant_state and participant_state in study_states:
                 has_matching_site = True
-                matching_sites = []  # Still fallback
+                matching_sites = []
                 print(f"📍 State-level fallback used for: {title}")
 
-        study["matching_site_contacts"] = matching_sites
-
+        # ❗️ Now run the skip check AFTER fallbacks
         if not has_matching_site and not is_telehealth:
             print(f"⛔️ Skipping {title}: no nearby site or study location match")
             continue
