@@ -108,6 +108,7 @@ def match_studies(participant_data, all_studies, exclude_river=False):
     participant_state = (pd.get("state", "") or pd.get("State", "")).split()[0].upper()
     participant_state = participant_state.upper()
     zip_code = pd.get("zip", "")
+    study["matching_site_contacts"] = matching_sites
 
     conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
     main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
