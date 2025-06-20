@@ -3,6 +3,51 @@ import re
 from geopy.distance import geodesic
 from utils import normalize_gender
 
+from geopy.distance import geodesic
+
+def passes_basic_filters(study, participant_tags, age, gender, coords, participant_state=""):
+    tags = [tag.lower().strip() for tag in study.get("tags", [])]
+
+    if study.get("min_age_years") is not None and age is not None:
+        if age < study["min_age_years"]:
+            return False
+
+    if study.get("max_age_years") is not None and age is not None:
+        if age > study["max_age_years"]:
+            return False
+
+    if "exclude_female" in tags and gender == "female":
+        return False
+
+    if "exclude_male" in tags and gender == "male":
+        return False
+
+    # River Program state match
+    title = study.get("study_title", "").lower().strip()
+    if title == "river nonprofit ketamine trial":
+        if participant_state.upper() not in ["CA", "MT"]:
+            return False
+
+    # State-specific matching
+    allowed_states = [s.upper() for s in study.get("states", []) if isinstance(s, str)]
+    if allowed_states and participant_state.upper() not in allowed_states:
+        return False
+
+    # Location fallback using coordinates
+    study_coords = study.get("coordinates")
+    if isinstance(study_coords, dict) and coords:
+        lat = study_coords.get("lat")
+        lng = study_coords.get("lng")
+        if lat and lng:
+            try:
+                if geodesic(coords, (lat, lng)).miles > 100:
+                    if "include_telehealth" not in tags:
+                        return False
+            except:
+                return False
+
+    return True
+
 def haversine_distance(coord1, coord2):
     # Calculate distance in kilometers between two coordinate tuples
     lat1, lon1 = coord1
