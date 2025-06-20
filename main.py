@@ -77,6 +77,7 @@ Always return only a JSON object with participant answers. Do NOT return any lis
 chat_histories = {}
 river_pending_confirmation = {}
 last_participant_data = {}
+study_selection_stage = {}
 
 def calculate_age(dob_str):
     if not dob_str.strip():
