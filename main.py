@@ -255,7 +255,7 @@ async def chat_handler(request: Request):
             "require_diabetes": "Do you have diabetes?",
             "exclude_bipolar": "Have you been diagnosed with bipolar disorder (this study may exclude it)?",
             "exclude_pregnant": "Are you currently pregnant or breastfeeding?",
-            "require_veteran": "Are you a U.S. military veteran?"
+            "require_veteran": "Are you a U.S. military veteran?",
             "include_depression": "Do you have a history of depression?",
             "include_anxiety": "Do you experience anxiety?",
             "include_ptsd": "Have you been diagnosed with PTSD?",
