@@ -320,7 +320,11 @@ async def chat_handler(request: Request):
             }
 
     if session_id not in chat_histories:
+        print("🆕 New session started:", session_id)
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        study_selection_stage[session_id] = {}
+        river_pending_confirmation.pop(session_id, None)
+        last_participant_data[session_id] = {}
     chat_histories[session_id].append({"role": "user", "content": user_input})
 
     response = openai.ChatCompletion.create(
