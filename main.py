@@ -382,6 +382,7 @@ async def chat_handler(request: Request):
         # 🔁 If previously selected studies exist, re-check eligibility after new answers
         if "selected_titles" in study_selection_stage.get(session_id, {}):
             participant_data = normalize_participant_data(json.loads(raw_json))
+            print("✅ Participant coords:", participant_data.get("coordinates"))
             last_participant_data[session_id] = participant_data
             push_to_monday(participant_data)
 
