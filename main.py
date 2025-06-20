@@ -5,7 +5,7 @@ import os
 import json
 import re
 from matcher import match_studies
-from utils import flatten_dict, normalize_gender, format_matches_for_gpt, normalize_participant_data
+from utils import flatten_dict, normalize_gender, format_matches_for_gpt
 from push_to_monday import push_to_monday
 from datetime import datetime
 from geopy.geocoders import GoogleV3
@@ -23,9 +23,7 @@ app.add_middleware(
 
 geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
-SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope. 
-Your goal is to assist individuals who have either depression, anxiety, PTSD or combination of these find potential research studies they could participate in.
-Always remain kind in your responses and considerate of the individual who is providing you their information in the hope that there are studies that could assist them.
+SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope.
 
 You must collect the following fields before proceeding to matching:
 - Name
@@ -35,8 +33,6 @@ You must collect the following fields before proceeding to matching:
 - Gender
 - ZIP code
 - Main mental health conditions (e.g. depression, PTSD, anxiety)
-
-If the user message is vague or doesn't include structured answers, politely tell them what you need and collect the information above by asking the questions one by one.
 
 After collecting just those fields, stop and return ONLY a JSON object with those values. Do NOT ask follow-up questions yet.
 
@@ -130,22 +126,12 @@ def contains_red_flag(text):
 
 def get_coordinates(city, state, zip_code):
     try:
-        if zip_code:
-            loc = geolocator.geocode({"postalcode": zip_code, "country": "US"})
-        elif city and state:
-            loc = geolocator.geocode(f"{city}, {state}")
-        elif state:
-            loc = geolocator.geocode(state)
-        else:
-            return None
-
+        query = f"{city}, {state} {zip_code}".strip()
+        loc = geolocator.geocode(query)
         if loc:
             return (loc.latitude, loc.longitude)
-        else:
-            print("⚠️ No geocoding result found for ZIP:", zip_code)
     except Exception as e:
-        print("⚠️ Failed to geocode location:", f"{city}, {state}, {zip_code}", "→", str(e))
-
+        print("⚠️ Failed to geocode location:", query, "→", str(e))
     return None
 
 def is_eligible_for_river(participant):
@@ -193,24 +179,13 @@ def normalize_participant_data(raw):
 
     if (not raw["city"] or not raw["state"]) and raw.get("zip"):
         try:
-            query = f"{raw['zip']}, USA"
-            loc = geolocator.geocode(query)
-            if loc:
-                print("📦 Raw geocoder output:", loc)
-
-                address_str = loc.address or ""
-                parts = address_str.split(", ")
-                print("📍 Parsed from string:", parts)
-
-                # Extract city/state fallback from formatted address
-                raw["city"] = raw["city"] or parts[0] if len(parts) >= 2 else ""
-                raw["state"] = raw["state"] or normalize_state(parts[1]) if len(parts) >= 2 else ""
-
-                print(f"✅ ZIP enrichment resolved to {raw['city']}, {raw['state']}")
-            else:
-                print("⚠️ No geocoding result found for ZIP:", raw["zip"])
+            loc = geolocator.geocode(raw["zip"])
+            if loc and hasattr(loc, 'raw'):
+                address = loc.raw.get("address", {})
+                raw["city"] = raw["city"] or address.get("city") or address.get("town") or address.get("village")
+                raw["state"] = raw["state"] or normalize_state(address.get("state", ""))
         except Exception as e:
-            print("⚠️ ZIP enrichment error:", e)
+            print("⚠️ ZIP enrichment failed:", e)
 
     raw["city"] = raw.get("city") or "Unknown"
     raw["state"] = raw.get("state") or "Unknown"
@@ -220,9 +195,7 @@ def normalize_participant_data(raw):
     raw["diagnosis_history"] = ", ".join(conds) if isinstance(conds, list) else conds
 
     raw["age"] = calculate_age(raw["dob"])
-    coords = get_coordinates(raw["city"], raw["state"], raw["zip"])
-    raw["coordinates"] = coords
-    print("📌 Final participant coordinates set to:", coords)
+    raw["coordinates"] = get_coordinates(raw["city"], raw["state"], raw["zip"])
 
     raw["bipolar"] = raw.get("bipolar") or get_any("bipolar disorder")
     raw["blood_pressure"] = raw.get("blood_pressure") or get_any("high blood pressure")
@@ -258,14 +231,14 @@ async def chat_handler(request: Request):
         }
 
     # ✅ Handle multi-selection of study matches (e.g., "1, 11")
-    if session_id in study_selection_stage and "matches" in study_selection_stage[session_id]:
+    if session_id in study_selection_stage:
         matches = study_selection_stage[session_id]["matches"]
         input_text = user_input.strip().lower()
         selected = []
 
         participant_data = last_participant_data.get(session_id, {})
         if participant_data:
-            last_participant_data[session_id] = participant_data  # keep latest data
+            last_participant_data[session_id] = participant_data  # <== add here to ensure continuity
 
         for i, m in enumerate(matches, 1):
             if str(i) in input_text or m["study"].get("study_title", "").lower() in input_text:
@@ -282,7 +255,7 @@ async def chat_handler(request: Request):
             "require_diabetes": "Do you have diabetes?",
             "exclude_bipolar": "Have you been diagnosed with bipolar disorder (this study may exclude it)?",
             "exclude_pregnant": "Are you currently pregnant or breastfeeding?",
-            "require_veteran": "Are you a U.S. military veteran?",
+            "require_veteran": "Are you a U.S. military veteran?"
             "include_depression": "Do you have a history of depression?",
             "include_anxiety": "Do you experience anxiety?",
             "include_ptsd": "Have you been diagnosed with PTSD?",
@@ -299,7 +272,7 @@ async def chat_handler(request: Request):
             "include_female only": "Are you female?",
             "include_male only": "Are you male?",
             "include_lupus": "Have you been diagnosed with lupus?",
-            "include_pms": "Do you experience premenstrual symptoms?"
+            "include_pms": "Do you experience premenstrual symptoms?"    
         }
 
         river_included = False
@@ -308,11 +281,9 @@ async def chat_handler(request: Request):
             tags = match["study"].get("tags", [])
             q_set = [tag_question_map[tag] for tag in tags if tag in tag_question_map]
             if q_set:
-                questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set[:3]))
+                questions.append(f"📝 For **{title}**:\n- " + "\n- ".join(q_set))
             if "river nonprofit ketamine trial" == title.strip().lower():
                 river_included = True
-
-        study_selection_stage[session_id]["selected_titles"] = [m["study"]["study_title"] for m in selected]
 
         if river_included:
             river_pending_confirmation[session_id] = last_participant_data.get(session_id, {})
@@ -323,16 +294,16 @@ async def chat_handler(request: Request):
                 )
             }
 
-        return {"reply": "\n\n".join(questions) if questions else "✅ Great! You're all set to participate."}
-    else:
-        return {"reply": "⚠️ It looks like your session has reset or there was a problem finding your matches. Please start again to see available studies."}
+        del study_selection_stage[session_id]
+        return {
+            "reply": (
+                "Great choice! Just a few quick questions to confirm your fit for these studies:\n\n"
+                + "\n\n".join(questions)
+            )
+        }
 
     if session_id not in chat_histories:
-        print("🆕 New session started:", session_id)
         chat_histories[session_id] = [{"role": "system", "content": SYSTEM_PROMPT}]
-        study_selection_stage[session_id] = {}
-        river_pending_confirmation.pop(session_id, None)
-        last_participant_data[session_id] = {}
     chat_histories[session_id].append({"role": "user", "content": user_input})
 
     response = openai.ChatCompletion.create(
@@ -392,60 +363,19 @@ async def chat_handler(request: Request):
             except Exception as e:
                 print("❌ River processing failed:", str(e))
                 return {"reply": "Sorry, I couldn’t process your River Program answers. Please try again briefly."}
-
+                
         participant_data = normalize_participant_data(json.loads(raw_json))
-        print("📊 Final participant data before match:", participant_data)
         last_participant_data[session_id] = participant_data
 
+        # Match studies
         with open("indexed_heyhope_filtered_geocoded.json", "r") as f:
             all_studies = json.load(f)
+        matches = match_studies(participant_data, all_studies)
+        study_selection_stage[session_id] = {"matches": matches}
 
-        # ✅ Always patch lat/lng
-        for study in all_studies:
-            for s in study.get("site_locations_and_contacts", []):
-                coords = s.get("coordinates")
-                if coords:
-                    s["latitude"] = coords.get("lat")
-                    s["longitude"] = coords.get("lng")
-            study["sites"] = study.get("site_locations_and_contacts", [])
-
-        # 🔁 If previously selected studies exist, re-check eligibility
-        if "selected_titles" in study_selection_stage.get(session_id, {}):
-            print("✅ Participant coords:", participant_data.get("coordinates"))
-            push_to_monday(participant_data)
-
-            all_matches = match_studies(participant_data, all_studies)
-            selected_titles = study_selection_stage[session_id].get("selected_titles", [])
-            confirmed_matches = [m for m in all_matches if m["study"].get("study_title") in selected_titles]
-
-            participant_coords = participant_data.get("coordinates")
-            for m in confirmed_matches:
-                m["study"]["participant_coords"] = participant_coords
-
-            del study_selection_stage[session_id]
-
-            if not confirmed_matches:
-                return {"reply": "Thanks! Unfortunately, based on your responses, none of your selected studies seem to be a match. Want to see other options?"}
-
-            return {
-                "reply": (
-                    "Thanks! Based on your answers, you're a confirmed match for the following studies:\n\n" +
-                    format_matches_for_gpt(confirmed_matches)
-                )
-            }
-
-        else:
-            matches = match_studies(participant_data, all_studies)
-            study_selection_stage[session_id] = {"matches": matches}
-
-            participant_coords = participant_data.get("coordinates")
-            for m in matches:
-                m["study"]["participant_coords"] = participant_coords
-
-            return {
-                "reply": format_matches_for_gpt(matches)
-            }
-
+        return {
+            "reply": format_matches_for_gpt(matches)
+        }
     except Exception as e:
         print("❌ JSON parsing failed:", str(e))
         return {"reply": "Sorry, I couldn’t understand your details. Can you try again briefly?"}
