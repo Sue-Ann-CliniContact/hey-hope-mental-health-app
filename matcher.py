@@ -1,151 +1,127 @@
-import os
-from geopy.geocoders import GoogleV3
-from geopy.distance import geodesic
-from datetime import datetime
-from utils import normalize_gender
+import math
+import re
 
-geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
+def haversine_distance(coord1, coord2):
+    # Calculate distance in kilometers between two coordinate tuples
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    R = 6371  # Earth radius in km
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(delta_lambda/2)**2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    return R * c
 
-def get_location_coords(zip_code):
-    try:
-        loc = geolocator.geocode(zip_code)
-        if loc:
-            return (loc.latitude, loc.longitude)
-    except Exception as e:
-        print("⚠️ Geocode failed for ZIP:", zip_code, "→", str(e))
-    return None
+# Synonym map for stronger matching
+SYNONYMS = {
+    "depression": ["depression", "major depressive disorder", "mdd"],
+    "anxiety": ["anxiety", "gad", "generalized anxiety disorder"],
+    "ptsd": ["ptsd", "post traumatic stress disorder", "post-traumatic stress"]
+}
 
 def normalize(text):
-    return text.lower().strip() if isinstance(text, str) else text
+    return re.sub(r"[^\w\s]", "", text.lower()).strip()
 
-def extract_condition_tags(mental_section):
-    if isinstance(mental_section, dict):
-        conds = mental_section.get("Conditions", [])
-    else:
-        conds = []
-    if isinstance(conds, list):
-        return [normalize(c) for c in conds]
-    elif isinstance(conds, str):
-        return [normalize(c) for c in conds.split(",")]
-    return []
+def expand_terms(diagnosis_text):
+    terms = set()
+    for diag in diagnosis_text.split(","):
+        norm = normalize(diag)
+        for key, values in SYNONYMS.items():
+            if norm in values:
+                terms.update(values)
+                break
+        else:
+            terms.add(norm)
+    return terms
 
-def passes_basic_filters(study, participant_tags, age, gender, coords, participant_state=""):
-    tags = [normalize(tag) for tag in study.get("tags", [])]
+def match_studies(participant, studies, exclude_river=False):
+    matches = []
+    age = participant.get("age")
+    location = participant.get("coordinates")
+    diagnosis = (participant.get("diagnosis_history") or "").lower()
+    expanded_terms = expand_terms(diagnosis)
 
-    if study.get("min_age_years") is not None and age is not None:
-        if age < study["min_age_years"]:
-            return False
-    if study.get("max_age_years") is not None and age is not None:
-        if age > study["max_age_years"]:
-            return False
+    for study in studies:
+        title = (study.get("study_title") or "").lower()
 
-    if "exclude_female" in tags and gender == "female":
-        return False
-    if "exclude_male" in tags and gender == "male":
-        return False
-
-    # ✅ Enforce location requirement for River
-    title = study.get("study_title", "").strip().lower()
-    if "river nonprofit ketamine trial" == title:
-        if participant_state.upper() not in ["CA", "MT"]:
-            return False
-    
-    # ✅ State-specific match logic
-    if "states" in study and isinstance(study["states"], list):
-        if participant_state.upper() not in [s.upper() for s in study["states"]]:
-            return False
-
-    if coords and study.get("coordinates"):
-        try:
-            distance = geodesic(coords, study["coordinates"]).miles
-            if distance > 100:
-                if "include_telehealth" in tags:
-                    return True
-                return False
-        except:
-            pass
-
-    return True
-
-def match_studies(participant_data, all_studies, exclude_river=False):
-    pd = participant_data
-    coords = pd.get("coordinates") or get_location_coords(pd.get("zip") or pd.get("ZIP code"))
-    age = pd.get("age")
-    gender = normalize_gender(pd.get("Gender identity") or pd.get("gender"))
-    conditions_raw = str(pd.get("diagnosis_history") or pd.get("Conditions") or "")
-    main_conditions = [normalize(c) for c in conditions_raw.split(",") if c.strip()]
-    participant_state = pd.get("state", "").upper()
-
-    # Add normalized condition tags
-    participant_tags = set(normalize(c) for c in main_conditions)
-
-    participant_tags = set(normalize(tag) for tag in main_conditions)
-    if gender:
-        participant_tags.add(gender)
-
-    if pd.get("Pregnant or Breastfeeding") is True or pd.get("Pregnant or breastfeeding (Follow-Up)") is True:
-        participant_tags.add("pregnant")
-    if normalize(pd.get("bipolar", "")) == "yes":
-        participant_tags.add("bipolar")
-    if normalize(pd.get("blood_pressure", "")) in ["yes", "unsure"]:
-        participant_tags.add("blood_pressure")
-    if normalize(pd.get("ketamine_use", "")) == "yes":
-        participant_tags.add("ketamine_use")
-    if normalize(pd.get("U.S. Veteran", "") or pd.get("veteran", "")) == "yes":
-        participant_tags.add("veteran")
-
-    print("👤 Gender:", gender)
-    print("📌 Participant Tags:", participant_tags)
-
-    eligible_studies = []
-    for study in all_studies:
-        title = study.get("study_title", "")
-        tags = [normalize(tag) for tag in study.get("tags", [])]
-
-        if exclude_river and "river program" in title.lower():
+        # Skip River study if explicitly excluded
+        if exclude_river and "river" in title:
             continue
 
-        if passes_basic_filters(study, participant_tags, age, gender, coords, participant_state):
-            score = 5
-            reasons = []
+        # 🚫 Gender-based exclusion logic
+        participant_gender = (participant.get("gender") or "").lower()
+        eligibility_text = (study.get("eligibility_text") or "").lower()
+        if participant_gender == "male":
+            if any(term in eligibility_text for term in [
+                "pregnant women", "pregnancy", "currently pregnant", "women aged",
+                "female only", "females only", "breastfeeding women", "mothers"
+            ]):
+                if "river" not in title:
+                    continue  # skip non-River studies not relevant for males
 
-            if not any(f"include_{pt}" in tags or pt in tags for pt in participant_tags):
-                score -= 3
-                reasons.append("⚠️ Main condition may not match")
+        # 🚫 Skip irrelevant studies that do not mention required condition terms
+        summary_text = (study.get("summary") or "") + " " + (study.get("study_title") or "")
+        summary_text = normalize(summary_text)
+        if not any(term in summary_text for term in expanded_terms):
+            if "river" not in title:
+                continue
 
-            for tag in tags:
-                if tag.startswith("exclude_") and tag[8:] in participant_tags:
-                    reasons.append(f"❌ Excluded due to: {tag[8:]}")
-                    score -= 2
-                if tag.startswith("require_") and tag[8:] not in participant_tags:
-                    reasons.append(f"⚠️ Missing required: {tag[8:]}")
-                    score -= 2
-                if tag.startswith("include_") and (tag[8:] in participant_tags):
-                    reasons.append(f"✅ Matches include: {tag[8:]}")
-                    score += 1
+        score = 0
+        reasons = []
 
-            if "river" in title.lower():
-                score += 3
-                reasons.append("🌊 Prioritized River Program")
+        # ✅ Age-based matching (null-safe)
+        age_min = study.get("min_age_years")
+        age_max = study.get("max_age_years")
+        if age is not None and (age_min is not None or age_max is not None):
+            if (age_min is not None and age < age_min) or (age_max is not None and age > age_max):
+                if "river" not in title:
+                    continue  # disqualify non-River matches
+            else:
+                score += 1
+                reasons.append("Matches your age range")
 
-            eligible_studies.append({
-                "study": study,
-                "match_score": max(1, min(score, 10)),
-                "match_reason": reasons
-            })
+        # ✅ Diagnosis match (already confirmed above, reward it)
+        if any(term in summary_text for term in expanded_terms):
+            score += 2
+            reasons.append("Relevant condition match")
 
-    sorted_matches = sorted(
-        eligible_studies,
-        key=lambda x: (-x["match_score"], "river" not in x["study"].get("study_title", "").lower())
-    )[:20]
+        # ✅ Location matching
+        loc_score = "Unknown"
+        if location and study.get("coordinates"):
+            dist = haversine_distance(location, study["coordinates"])
+            study["distance_km"] = round(dist, 1)
+            if dist <= 160:
+                loc_score = "Near You"
+                score += 2
+                reasons.append(f"Located near you (~{int(dist)} km)")
+            else:
+                loc_score = "Other"
+        else:
+            loc_score = "Other"
 
-    matched_tags = set()
-    matched_titles = []
-    for match in sorted_matches:
-        matched_tags.update(match["study"].get("tags", []))
-        matched_titles.append(match["study"].get("study_title", "Untitled Study"))
+        # 📞 Contact info
+        contact_parts = []
+        for key in ["contact_name", "contact_email", "contact_phone"]:
+            val = study.get(key)
+            if val:
+                contact_parts.append(val)
+        contact_info = " | ".join(contact_parts) if contact_parts else "Not provided"
 
-    participant_data["matched_tags"] = sorted(matched_tags)
-    participant_data["matched_studies"] = matched_titles
+        matches.append({
+            "study_title": study.get("study_title"),
+            "summary": study.get("summary", ""),
+            "conditions": summary_text,
+            "locations": study.get("location", "Not specified"),
+            "contacts": contact_info,
+            "link": study.get("study_link", ""),
+            "distance_km": study.get("distance_km", None),
+            "match_confidence": score,
+            "match_rationale": "; ".join(reasons),
+            "location_tag": loc_score,
+            "eligibility": study.get("eligibility_text", ""),
+        })
 
-    return sorted_matches
+    matches.sort(key=lambda m: m["match_confidence"], reverse=True)
+    return matches
