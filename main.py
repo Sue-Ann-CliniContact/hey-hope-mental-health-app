@@ -25,7 +25,6 @@ geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
 SYSTEM_PROMPT = """You are a clinical trial assistant named Hey Hope.
 Your goal is to assist individuals that suffer from depression, anxiety, PTSD or a combination of these conditions find clinical research trials that could assist them.
-Always be polite and considerate of the user.
 
 You must collect the following fields before proceeding to matching:
 - Name
@@ -36,7 +35,8 @@ You must collect the following fields before proceeding to matching:
 - ZIP code
 - Main mental health conditions (e.g. depression, PTSD, anxiety)
 
-If the users input is vague or not structured then politely ask them to provide the neceassry information you need to match them with a study by asking them the questions above one by one.
+If the users input is vague or not structured then politely ask them to provide the neceassry information you need to match them with a study.
+
 After collecting just those fields, stop and return ONLY a JSON object with those values. Do NOT ask follow-up questions yet.
 
 ❗️Important rules:
@@ -285,6 +285,7 @@ async def chat_handler(request: Request):
             if not matches:
                 push_to_monday(participant_data)
                 last_participant_data[session_id] = participant_data
+                print("❌ Could not find JSON in GPT reply:", gpt_message)
                 return {"reply": "😕 No matches found, but your info has been saved for future studies."}
 
             # Store data and show top 10 matches

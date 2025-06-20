@@ -16,6 +16,18 @@ def haversine_distance(coord1, coord2):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
     return R * c
 
+def is_site_nearby(site, participant_coords, radius_miles=100):
+    if not site or not participant_coords:
+        return False
+    lat = site.get("latitude")
+    lon = site.get("longitude")
+    if lat is None or lon is None:
+        return False
+    try:
+        return geodesic(participant_coords, (lat, lon)).miles <= radius_miles
+    except:
+        return False
+
 # Synonym map for stronger matching
 SYNONYMS = {
     "depression": ["depression", "major depressive disorder", "mdd"],
