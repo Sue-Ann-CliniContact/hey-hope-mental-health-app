@@ -1,9 +1,10 @@
 from dateutil import parser
 from datetime import datetime
-from geopy.geocoders import GoogleV3
 import re
+import os
+from geopy.geocoders import GoogleV3
 
-geolocator = GoogleV3()
+geolocator = GoogleV3(api_key=os.getenv("GOOGLE_MAPS_API_KEY"))
 
 def normalize_gender(g):
     if not g:
